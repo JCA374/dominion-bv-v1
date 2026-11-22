@@ -1,1 +1,6 @@
 {"t": "2026-11-22 22:57", "kind": "collect", "msg": "round 1: collecting 2000 states (c2 plays)"}
+{"t": "2026-11-22 23:11", "kind": "labels", "msg": "round 1: 2118 states in 888 s (2.4/s), 332528 rollouts, capped 0.03%, errors 0"}
+{"t": "2026-11-22 23:12", "kind": "fit", "msg": "round 1: 1682 train states, dev regret 0.0927 (incumbent 0.0429), top-1 18%", "secs": 4}
+{"t": "2026-11-22 23:12", "kind": "dev", "msg": "round 1: student on c2 vs c2 m0.0: 0.2% (override 76%), m0.02: 8.9% (override 31%), m0.05: 43.2% (override 6%)"}
+{"t": "2026-11-22 23:12", "kind": "stage", "msg": "stage 2: student fit"}
+{"t": "2026-11-22 23:12", "kind": "collect", "msg": "round 2: collecting 15000 states (c2 plays)"}

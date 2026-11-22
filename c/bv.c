@@ -9,7 +9,7 @@
 #include "../rl-v3/c/rl.c"
 
 /* ── the student (Deep Sets over card tokens), forward pass; see bv/student.py for the layout ── */
-#define BV_TOK 16           /* per-card token features (bv_tokens) */
+#define BV_TOK 17           /* per-card token features (bv_tokens) */
 #define BV_GLB 16           /* global features */
 #define BV_W 64             /* width */
 #define BV_EMB 8            /* learned card-id embedding */
@@ -19,9 +19,10 @@ int bv_glb(void) { return BV_GLB; }
 
 /* Tokens read off the rl features (x = rl_features, RL_NF) plus the card rules. Row c, columns:
  * 0 own, 1 own draw pile, 2 opp owns, 3 supply left, 4 in game, 5 in my hand, 6 in my play, 7 cost/8, 8 +cards/3,
- * 9 +actions/2, 10 +coins/3, 11 +buys, 12 action, 13 attack, 14 victory, 15 treasure.  Global: coins, buys, my
- * turns, opp turns, vp, opp vp, vp diff, provinces, empty piles, seat, actions left, then 5 zero (spare). */
-void bv_tokens(const float *x, float *tok, float *glb) {
+ * 9 +actions/2, 10 +coins/3, 11 +buys, 12 action, 13 attack, 14 victory, 15 treasure, 16 c2's probability of
+ * buying it (softmax of c2's logits over the candidates; 0 if not a candidate).  Global: coins, buys, my turns, opp
+ * turns, vp, opp vp, vp diff, provinces, empty piles, seat, actions left, c2's PASS probability, then 4 zero. */
+void bv_tokens(const float *x, const float *pol, float *tok, float *glb) {
     const int N = DE_NUM_CARDS;
     for (int c = 0; c < N; c++) {
         float *t = tok + c * BV_TOK;
@@ -31,10 +32,12 @@ void bv_tokens(const float *x, float *tok, float *glb) {
         t[7] = d->cost / 8.0f; t[8] = d->cards / 3.0f; t[9] = d->actions / 2.0f; t[10] = d->coins / 3.0f;
         t[11] = (float)d->buys; t[12] = (d->types & DE_ACTION) != 0; t[13] = (d->types & DE_ATTACK) != 0;
         t[14] = (d->types & DE_VICTORY) != 0; t[15] = (d->types & DE_TREASURE) != 0;
+        t[16] = pol[c];
     }
     for (int i = 0; i < 10; i++) glb[i] = x[5 * N + i];
     glb[10] = x[AZ_NF + 2 * N];
-    for (int i = 11; i < BV_GLB; i++) glb[i] = 0;
+    glb[11] = pol[RL_PASS];
+    for (int i = 12; i < BV_GLB; i++) glb[i] = 0;
 }
 
 static void lin(const float *w, const float *b, const float *x, int nin, int nout, float *y, int relu) {
@@ -49,11 +52,11 @@ static void lin(const float *w, const float *b, const float *x, int nin, int nou
 /* q[RL_NA]: sigmoid action values (a card, RL_PASS). Layout (row-major torch Linear weights, then bias):
  * emb[N][BV_EMB]; g0: (BV_TOK+BV_EMB+BV_GLB)->W; for r in 0,1: u_r: (W + 2W) -> W  (token, mean pool, max pool);
  * head: (W + 2W + BV_GLB) -> W -> 1 per card; pass: (2W + BV_GLB) -> W -> 1. */
-void bv_student(const float *prm, const float *x, float *q) {
+void bv_student(const float *prm, const float *x, const float *pol, float *q) {
     const int N = DE_NUM_CARDS, W = BV_W;
     float tok[DE_NUM_CARDS * BV_TOK], glb[BV_GLB], h[DE_NUM_CARDS][BV_W], h2[DE_NUM_CARDS][BV_W];
     float in[BV_TOK + BV_EMB + BV_GLB + 3 * BV_W], pool[2 * BV_W], hid[BV_W];
-    bv_tokens(x, tok, glb);
+    bv_tokens(x, pol, tok, glb);
     const float *emb = prm, *p = emb + N * BV_EMB;
     const int n0 = BV_TOK + BV_EMB + BV_GLB;
     for (int c = 0; c < N; c++) {
@@ -182,24 +185,38 @@ static float rollout(const de_game *g, int me, int cand, uint64_t seed) {
     return w == 3 ? 0.5f : (w >> me & 1) ? 1.f : 0.f;
 }
 
+/* the candidates: all legal options if few, else the incumbent, PASS and the net's top-n other buys */
+static int bv_cands(const int *ok, const float *lg, int inc, int *cand) {
+    int nc = 0, nl = 0, used[RL_NA] = {0};
+    for (int a = 0; a < RL_NA; a++) nl += ok[a];
+    if (nl <= g_cfg.topn + 3) {
+        for (int a = 0; a < RL_NA; a++) if (ok[a]) cand[nc++] = a;
+        return nc;
+    }
+    cand[nc++] = inc; used[inc] = 1;
+    if (ok[RL_PASS] && !used[RL_PASS]) { cand[nc++] = RL_PASS; used[RL_PASS] = 1; }
+    for (int t = 0; t < g_cfg.topn; t++) {
+        int b = -1;
+        for (int a = 0; a < RL_PASS; a++) if (ok[a] && !used[a] && (b < 0 || lg[a] > lg[b])) b = a;
+        if (b < 0) break;
+        cand[nc++] = b; used[b] = 1;
+    }
+    return nc;
+}
+
+/* c2's probabilities over the candidates (the student's prior input) */
+static void bv_pol(const float *lg, const int *cand, int nc, float *pol) {
+    float mx = -1e30f, sum = 0;
+    for (int a = 0; a < RL_NA; a++) pol[a] = 0;
+    for (int i = 0; i < nc; i++) if (lg[cand[i]] > mx) mx = lg[cand[i]];
+    for (int i = 0; i < nc; i++) { pol[cand[i]] = expf(lg[cand[i]] - mx); sum += pol[cand[i]]; }
+    for (int i = 0; i < nc; i++) pol[cand[i]] /= sum;
+}
+
 /* grade the candidates; q, se: per option (NAN if not a candidate); returns draws used */
 static int bv_grade(const de_game *g, int me, const int *ok, const float *lg, int inc, uint64_t *rng,
                     float *q, float *se) {
-    int cand[RL_NA], nc = 0, nl = 0;
-    for (int a = 0; a < RL_NA; a++) nl += ok[a];
-    int used[RL_NA] = {0};
-    if (nl <= g_cfg.topn + 3) {
-        for (int a = 0; a < RL_NA; a++) if (ok[a]) { cand[nc++] = a; used[a] = 1; }
-    } else {
-        cand[nc++] = inc; used[inc] = 1;
-        if (ok[RL_PASS] && !used[RL_PASS]) { cand[nc++] = RL_PASS; used[RL_PASS] = 1; }
-        for (int t = 0; t < g_cfg.topn; t++) {
-            int b = -1;
-            for (int a = 0; a < RL_PASS; a++) if (ok[a] && !used[a] && (b < 0 || lg[a] > lg[b])) b = a;
-            if (b < 0) break;
-            cand[nc++] = b; used[b] = 1;
-        }
-    }
+    int cand[RL_NA], nc = bv_cands(ok, lg, inc, cand);
     double s[RL_NA] = {0}, d[RL_NA] = {0}, d2[RL_NA] = {0};
     int K = 0;
     g_in_plan++;
@@ -273,10 +290,12 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
         }
     }
     if ((mode == 3 || mode == 4) && g_student) {
-        float sq[RL_NA];
-        bv_student(g_student, x, sq);
+        float sq[RL_NA], pol[RL_NA];
+        int cand[RL_NA], nc = bv_cands(ok, lg, inc, cand);
+        bv_pol(lg, cand, nc, pol);
+        bv_student(g_student, x, pol, sq);
         int b = inc;
-        for (int c = 0; c < RL_NA; c++) if (ok[c] && sq[c] > sq[b]) b = c;
+        for (int i = 0; i < nc; i++) if (sq[cand[i]] > sq[b]) b = cand[i];
         if (sq[b] - sq[inc] > g_cfg.margin) a = b;
     }
     if (a != inc) g_overrides++;
@@ -330,6 +349,15 @@ int bv_play(const int *mode, const float *prm0, const float *prm1, const int *nh
     out[5] = g.capped | (g.error << 1);
     g_bvrec = NULL;
     return rec.n;
+}
+
+/* c2's candidate probabilities for a recorded state (training): lg from its features, candidates = the graded ones */
+void bv_pol_of(const float *prm, int nh, int nf, const float *x, const float *q, float *pol) {
+    float lg[RL_NA];
+    rl_eval(prm, nh, nf, x, lg);
+    int cand[RL_NA], nc = 0;
+    for (int a = 0; a < RL_NA; a++) if (!isnan(q[a])) cand[nc++] = a;
+    bv_pol(lg, cand, nc, pol);
 }
 
 /* test hook: the canonical + hidden copy's my-deck and opponent-hand, for the sampler tests */

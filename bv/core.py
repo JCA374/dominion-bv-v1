@@ -44,8 +44,9 @@ TOK, GLB = lib.bv_tok(), lib.bv_glb()
 _I, _F = ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float)
 lib.bv_set_cfg.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_float, ctypes.c_int, ctypes.c_float]
 lib.bv_set_student.argtypes = [_F]
-lib.bv_student.argtypes = [_F, _F, _F]
-lib.bv_tokens.argtypes = [_F, _F, _F]
+lib.bv_student.argtypes = [_F, _F, _F, _F]
+lib.bv_tokens.argtypes = [_F, _F, _F, _F]
+lib.bv_pol_of.argtypes = [_F, ctypes.c_int, ctypes.c_int, _F, _F, _F]
 lib.bv_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
 lib.bv_play.restype = ctypes.c_int
 lib.bv_play.argtypes = [_I, _F, _F, _I, _I, _I, _I, _I, _I, ctypes.c_int, ctypes.c_uint64, ctypes.c_uint64,
@@ -142,3 +143,15 @@ def seat_for(spec, kingdom, bv=0):
         return Seat(GA, base_genome_v2(kingdom)["ints"])
     name = {"c2": "rl3_c2_2654.npy", "c1": "rl3_c1_2300.npy", "rl1": "rl1_r2_2200.npy"}[spec]
     return Seat(NET, None, params(name), bv)     # a net seat never reads the genome
+
+
+def policy_prior(X, Q, net="rl3_c2_2654.npy"):
+    """c2's probabilities over each recorded state's graded candidates (the student's prior input)."""
+    p = params(net)
+    nh, nf = net_shape(p)
+    P = np.zeros((len(X), NA), np.float32)
+    X = np.ascontiguousarray(X, np.float32)
+    Q = np.ascontiguousarray(Q, np.float32)
+    for i in range(len(X)):
+        lib.bv_pol_of(_f(p), nh, nf, _f(X[i]), _f(Q[i]), _f(P[i]))
+    return P

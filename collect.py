@@ -68,6 +68,9 @@ def collect(a):
     """Runs workers until a['states'] labels exist; returns rollout stats."""
     ctx = mp.get_context("fork")
     q = ctx.Queue()
+    if a["states"] <= 0:
+        return {"rollouts": 0, "capped": 0, "errors": 0, "graded": 0, "overrides": 0, "buys": 0, "states": 0,
+                "games": 0, "secs": 0}
     per = -(-a["states"] // a["workers"])
     ps = [ctx.Process(target=worker, args=(a, w, per, q)) for w in range(a["workers"])]
     for p in ps:

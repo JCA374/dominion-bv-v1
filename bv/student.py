@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from bv.core import NA, NF, NUM_CARDS, lib  # noqa: F401
 
-N, TOK, GLB, W, EMB = NUM_CARDS, 16, 16, 64, 8
+N, TOK, GLB, W, EMB = NUM_CARDS, 17, 16, 64, 8
 AZ_NF = 5 * N + 10
 _C = __import__("dominion_engine.cards", fromlist=["CARDS"])
 
@@ -20,8 +20,9 @@ def _rules():
     tok = np.zeros(N * TOK, np.float32)
     glb = np.zeros(GLB, np.float32)
     x = np.zeros(NF, np.float32)
+    pol = np.zeros(NA, np.float32)
     F = ctypes.POINTER(ctypes.c_float)
-    lib.bv_tokens(x.ctypes.data_as(F), tok.ctypes.data_as(F), glb.ctypes.data_as(F))
+    lib.bv_tokens(x.ctypes.data_as(F), pol.ctypes.data_as(F), tok.ctypes.data_as(F), glb.ctypes.data_as(F))
     out[:] = tok.reshape(N, TOK)[:, 7:16]
     return torch.tensor(out)
 
@@ -29,12 +30,13 @@ def _rules():
 RULES = _rules()
 
 
-def tokens(x: torch.Tensor):
-    """x [B, NF] rl features -> tok [B, N, TOK], glb [B, GLB], in_game [B, N]"""
+def tokens(x: torch.Tensor, pol: torch.Tensor):
+    """x [B, NF] rl features, pol [B, NA] c2's candidate probabilities -> tok [B, N, TOK], glb [B, GLB], in_game [B, N]"""
     B = x.shape[0]
     zone = [x[:, i * N:(i + 1) * N] for i in range(5)] + [x[:, AZ_NF:AZ_NF + N], x[:, AZ_NF + N:AZ_NF + 2 * N]]
-    tok = torch.cat([torch.stack(zone, -1), RULES.unsqueeze(0).expand(B, N, 9)], -1)
-    glb = torch.cat([x[:, 5 * N:5 * N + 10], x[:, AZ_NF + 2 * N:AZ_NF + 2 * N + 1], x.new_zeros(B, GLB - 11)], -1)
+    tok = torch.cat([torch.stack(zone, -1), RULES.unsqueeze(0).expand(B, N, 9), pol[:, :N, None]], -1)
+    glb = torch.cat([x[:, 5 * N:5 * N + 10], x[:, AZ_NF + 2 * N:AZ_NF + 2 * N + 1], pol[:, N:N + 1],
+                     x.new_zeros(B, GLB - 12)], -1)
     return tok, glb, x[:, 4 * N:5 * N]
 
 
@@ -54,9 +56,9 @@ class Student(nn.Module):
         self.h1, self.h2 = nn.Linear(3 * W + GLB, W), nn.Linear(W, 1)
         self.p1, self.p2 = nn.Linear(2 * W + GLB, W), nn.Linear(W, 1)
 
-    def forward(self, x):
+    def forward(self, x, pol):
         """logits [B, NA] (sigmoid = expected final score)"""
-        tok, glb, m = tokens(x)
+        tok, glb, m = tokens(x, pol)
         B = x.shape[0]
         G = glb.unsqueeze(1).expand(B, N, GLB)
         h = torch.relu(self.g0(torch.cat([tok, self.emb.unsqueeze(0).expand(B, N, EMB), G], -1)))

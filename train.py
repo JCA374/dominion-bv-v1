@@ -80,7 +80,9 @@ def fit(D, init=None, log=print):
     if init is not None:
         m.load_state_dict(init)
     tr, dv = np.where(D["SPLIT"] == 2)[0], np.where(D["SPLIT"] == 0)[0]
+    from bv.core import policy_prior
     X = torch.tensor(D["X"])
+    POL = torch.tensor(policy_prior(D["X"], D["Q"]))
     Q = torch.tensor(np.nan_to_num(D["Q"], nan=0.0))
     M = torch.tensor(~np.isnan(D["Q"]))
     SE = torch.tensor(np.nan_to_num(D["SE"], nan=1.0))
@@ -88,7 +90,7 @@ def fit(D, init=None, log=print):
     opt = torch.optim.Adam(m.parameters(), lr=CFG["lr"])
 
     def loss_of(idx):
-        z = m(X[idx])
+        z = m(X[idx], POL[idx])
         p = torch.sigmoid(z)
         mk = M[idx].float()
         bce = torch.nn.functional.binary_cross_entropy_with_logits(z, Q[idx], reduction="none")
@@ -109,7 +111,7 @@ def fit(D, init=None, log=print):
             opt.zero_grad()
             l_.backward()
             opt.step()
-            tot += float(l_) * min(CFG["batch"], len(perm) - i)
+            tot += float(l_.detach()) * min(CFG["batch"], len(perm) - i)
         log(f"  epoch {ep}: train loss {tot / max(len(perm), 1):.4f}")
     m.eval()
     with torch.no_grad():
@@ -140,6 +142,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", default="p1")
     ap.add_argument("--continue", dest="cont", action="store_true")
+    ap.add_argument("--fit-first", action="store_true", help="first round: no new labels, refit on what exists")
     a = ap.parse_args()
     R = Run(a.run)
     json.dump(CFG, open(os.path.join(R.d, "config.json"), "w"), indent=1)
@@ -150,9 +153,16 @@ def main():
     ck = os.path.join(R.d, "student.pt")
     if a.cont and os.path.exists(ck):
         init = torch.load(ck)
+        from bv.student import Student
+        try:
+            Student().load_state_dict(init)
+        except RuntimeError:
+            init = None                                  # the student changed shape: refit from scratch
     while R.s["round"] < CFG["max_rounds"]:
         rnd = R.s["round"] + 1
         n = CFG["pilot_states"] if rnd == 1 else CFG["round_states"]
+        if a.fit_first:
+            n, a.fit_first = 0, False
         dag = R.s["stage"] >= 3
         stud = os.path.join(R.d, "student.npy") if dag else ""
         R.event("collect", f"round {rnd}: collecting {n} states ({'DAgger: student plays' if dag else 'c2 plays'})")
