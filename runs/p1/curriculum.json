@@ -1,26 +1,25 @@
-[
- {
-  "id": 1,
-  "name": "Labels",
-  "what": "c2 plays every buy; the teacher grades it with paired rollouts to the end",
-  "gate": "pilot: cap/error rate < 1%, labels reproducible"
- },
- {
-  "id": 2,
-  "name": "Student fit",
-  "what": "fit the Deep Sets student on all labels; dev match student-on-c2 vs c2",
-  "gate": "dev score >= 50.5% at the best margin"
- },
- {
-  "id": 3,
-  "name": "DAgger",
-  "what": "the student plays its buys, the teacher grades them (positions the student reaches)",
-  "gate": "dev score >= 53%"
- },
- {
-  "id": 4,
-  "name": "Promotion",
-  "what": "2,000 reserved kingdoms, both seats, vs c1 2300 and c2 2654",
-  "gate": ">= 53% vs both, kingdom-block 95% interval above 50%"
- }
-]
+{
+ "note": "Distil a paired-rollout buy teacher into a Deep Sets student on top of RL-v3 c2.",
+ "stages": [
+  {
+   "name": "1 Labels",
+   "world": "c2 plays every buy; the teacher grades it with paired rollouts to the end",
+   "pass": "pilot: cap/error rate < 1%, labels reproducible"
+  },
+  {
+   "name": "2 Student fit",
+   "world": "fit the Deep Sets student on all labels; dev match student-on-c2 vs c2",
+   "pass": "dev score >= 50.5% at the best margin"
+  },
+  {
+   "name": "3 DAgger",
+   "world": "the student plays its buys, the teacher grades them (positions the student reaches)",
+   "pass": "dev score >= 53%"
+  },
+  {
+   "name": "4 Promotion",
+   "world": "2,000 reserved kingdoms, both seats, vs c1 2300 and c2 2654",
+   "pass": ">= 53% vs both, kingdom-block 95% interval above 50%"
+  }
+ ]
+}
