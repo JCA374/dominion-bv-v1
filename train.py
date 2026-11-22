@@ -146,7 +146,9 @@ def main():
     a = ap.parse_args()
     R = Run(a.run)
     json.dump(CFG, open(os.path.join(R.d, "config.json"), "w"), indent=1)
-    json.dump(STAGES, open(os.path.join(R.d, "curriculum.json"), "w"), indent=1)
+    json.dump({"note": "Distil a paired-rollout buy teacher into a Deep Sets student on top of RL-v3 c2.",
+               "stages": [{"name": f"{x['id']} {x['name']}", "world": x["what"], "pass": x["gate"]} for x in STAGES]},
+              open(os.path.join(R.d, "curriculum.json"), "w"), indent=1)
     from collect import collect
     import torch
     init = None

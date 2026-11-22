@@ -1,0 +1,14 @@
+title: 'Episode 01: A challenger that prices every buy'
+kind: prose
+author: ''
+narrator: Kokoro TTS (af_heart)
+narration:
+  narrator: af_heart
+  speed: 0.95
+  paragraph_pause: 0.6
+chapters:
+  ch01: 'Episode 01: A challenger that prices every buy'
+sources:
+  ch01:
+    path: /home/jonas/code/games/dominion/trainers/bv-v1/podcast/episode-01.md
+    sha1: 9cfbebbdb23141703514c83ff61ac4d221dd2fc9

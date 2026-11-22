@@ -1,9 +1,9 @@
 {
  "pilot_states": 2000,
- "round_states": 15000,
+ "round_states": 20000,
  "workers": 5,
  "k0": 16,
- "k1": 32,
+ "k1": 16,
  "se": 1.5,
  "topn": 5,
  "epochs": 6,
@@ -12,9 +12,9 @@
  "rank_w": 10.0,
  "dev_kingdoms": 300,
  "margins": [
-  0.0,
   0.02,
-  0.05
+  0.05,
+  0.1
  ],
  "dagger_after": 0.505,
  "promote_at": 0.53,

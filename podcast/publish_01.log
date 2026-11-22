@@ -1,0 +1,13 @@
+[23:15:22] added docs/podcast/index.html
+[23:15:22] prep + narrate (Kokoro)
+[23:31:13] listen-check (Whisper)
+[23:35:01] pipeline stages PASS: 5/5
+[23:35:02] episode-01.mp3: 180 s
+1 episode(s)
+[23:35:02] tests
+3 passed in 29.05s
+[23:35:37] waiting for GitHub Pages (f12bb8ebca1df003eadc54f7acf404df73a6d352)
+[23:36:25]   200 https://jca374.github.io/dominion-bv-v1/podcast/index.html
+[23:36:25]   200 https://jca374.github.io/dominion-bv-v1/podcast/episode-01.mp3
+[23:36:26]   404 https://jca374.github.io/dominion-bv-v1/data/podcast.json
+FAILED: data/podcast.json returned 404
