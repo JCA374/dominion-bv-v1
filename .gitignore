@@ -1,0 +1,6 @@
+bv.so
+bv.so.*
+__pycache__/
+data/
+logs/
+*.pt
