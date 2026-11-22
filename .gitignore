@@ -1,12 +1,12 @@
 bv.so
 bv.so.*
 __pycache__/
-data/
-logs/
+/data/
+/logs/
 *.pt
 .venv/
 __pycache__/
-logs/
+/logs/
 publish_loop.pid
 runs/*/checkpoint*
 .venv
