@@ -1,0 +1,23 @@
+{
+ "pilot_states": 2000,
+ "round_states": 15000,
+ "workers": 5,
+ "k0": 16,
+ "k1": 32,
+ "se": 1.5,
+ "topn": 5,
+ "epochs": 6,
+ "batch": 512,
+ "lr": 0.001,
+ "rank_w": 10.0,
+ "dev_kingdoms": 300,
+ "margins": [
+  0.0,
+  0.02,
+  0.05
+ ],
+ "dagger_after": 0.505,
+ "promote_at": 0.53,
+ "reserved_kingdoms": 2000,
+ "max_rounds": 200
+}

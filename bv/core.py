@@ -92,8 +92,12 @@ class Seat:
         self.mode, self.genome, self.prm, self.bv = mode, genome, prm, bv
 
 
-def configure(k0=16, k1=64, se_mult=1.5, topn=5, margin=0.0, student=None):
+lib.bv_set_z.argtypes = [ctypes.c_float]
+
+
+def configure(k0=16, k1=64, se_mult=1.5, topn=5, margin=0.0, student=None, z=0.0):
     lib.bv_set_cfg(k0, k1, se_mult, topn, margin)
+    lib.bv_set_z(z)
     configure.student = student                    # keep a reference alive
     lib.bv_set_student(_f(student))
 

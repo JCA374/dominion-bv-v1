@@ -1,0 +1,1 @@
+window.SITE = {"title": "Dominion bv-v1: Buy Value", "icon": "\ud83e\ude99", "repo": "JCA374/dominion-bv-v1", "tabs": [["index.html", "Overview"], ["log.html", "Log"], ["training.html", "Training"], ["inputs.html", "The data"], ["model.html", "The model"], ["speed.html", "Speed"], ["study.html", "Study"], ["lessons.html", "Lessons"]]};

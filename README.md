@@ -1,5 +1,7 @@
 # dominion-bv-v1: a buy-value challenger
 
+**🌐 Live site: https://jca374.github.io/dominion-bv-v1/**
+
 Can a network that **learns the value of each buy** from paired rollouts beat our best model, RL-v3 (c1 iteration 2300, c2 iteration 2654)?
 
 - **Teacher** (`c/bv.c`, `bv_grade`): at each buy, every candidate (c2's top 5 buys, its own choice and PASS) is played to the end of the game on the same 16–64 hidden-state draws. Frozen policies continue for both players: c2 for us, the real opponent for them. The label is the mean final score (win 1, tie ½). Hidden zones are put in a canonical order before `de_hide`, so equal observations give equal samples.

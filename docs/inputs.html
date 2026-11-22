@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The data</title>
+<link rel="stylesheet" href="style.css?v=d5cc2c7c">
+</head>
+<body>
+<main>
+<h1>The data</h1>
+<p class="lede">Positions come from games c2 plays against a fixed mix of opponents (c2, c1 2300, rl-v1 2200, GA portfolio-v3 base). One example is one <b>buy decision</b> of the c2 seat, kept only when there are at least two options.</p>
+<ul>
+<li><b>Input</b>: RL-v3's 413 features of the position, the player's own view. From these the student builds 33 card tokens, one per card type, each with 16 numbers: copies I own, in my draw pile, opponent owns, supply left, in this game, in my hand, in play, then cost, +cards, +actions, +coins, +buys, and flags for action, attack, victory and treasure. A 16-number global vector holds coins, buys, turns, VP, the VP difference, Provinces left, empty piles, seat and actions left. A learned 8-number embedding identifies each card.</li>
+<li><b>Label</b>: for each candidate buy, the mean final score (win 1, tie ½, loss 0) over 16–32 rollouts to the end of the game. All candidates use the same shuffles. The label also stores the standard error of each candidate's difference from c2's own choice, and the number of draws.</li>
+<li><b>What it may not see</b>: the opponent's hand and the order of any draw pile. Before each rollout those zones are sorted into a canonical order and reshuffled, so two positions that look the same to the player give the same samples. One known gap: cards placed on top of a deck by Sentry, Harbinger, Artisan or Bureaucrat are reshuffled too.</li>
+<li><b>Splits</b>: by a hash of the sorted kingdom. Hash mod 10 = 0 is dev (regret and calibration), 1 is test, the rest is train. Every position from one kingdom stays in one split. Dev and promotion matches use separate seeded kingdom streams.</li>
+</ul><p></p>
+</main>
+<script src="site.js?v=7b3d32cc"></script>
+<script src="common.js?v=958183f8"></script>
+<script src="project.js?v=092dcfd4"></script>
+</body>
+</html>

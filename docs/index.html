@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview</title>
+<link rel="stylesheet" href="style.css?v=d5cc2c7c">
+</head>
+<body>
+<main>
+<header class="hero">
+  <h1>Learn what each buy is worth, then beat the best Dominion model</h1>
+  <p class="lede">RL-v3 (c1 2300 and c2 2654) is our strongest Dominion model: 86% against the GA base. This project asks whether a small network that <b>scores every possible buy</b> can beat it. The network learns from paired rollouts that play each buy to the end of the game. Goal: at least <b>53%</b> against both RL-v3 checkpoints on 2,000 reserved kingdoms with both seats, with the kingdom-block 95% interval above 50%.</p>
+  <p class="countdown" id="countdown"></p>
+</header>
+
+<section>
+  <h2>Status now</h2>
+  <div class="cards" id="cards"></div>
+  <p class="muted small">Numbers come from the run files and update every 15 minutes. Details on the <a href="training.html">Training</a> tab.</p>
+</section>
+
+<section>
+  <h2>What this is</h2>
+  <p>In Dominion, most of the game is decided by what you buy. Every turn you have some coins and choose a card from the supply, or nothing. RL-v3 plays every decision with one network trained by PPO. Its buy choice is a policy: it says what it would buy, not how much better that buy is than the next best.</p>
+<p><b>Example.</b> You have $5 on turn 6 in a kingdom with Witch, Laboratory, Market and Militia. c2 buys Laboratory. The teacher plays the game to the end six ways: buy Laboratory, Market, Witch, Silver, Duchy, or nothing. Each way uses the same 16–32 shuffles of the unseen cards, and c2 plays everything afterwards. If Witch wins 61% of those games and Laboratory 55%, the label says Witch is worth six points more here.</p>
+<p><b>Why it is hard.</b> Buys differ by a few percent of win chance, while one rollout is a coin flip. The teacher's per-position estimate is noisy, and the student has to average that noise away across many positions.</p>
+</section>
+
+<section>
+  <h2>Approach</h2>
+  <p>Four parts:</p>
+<ol>
+<li><b>Teacher</b> (C, <code>c/bv.c</code>). At each buy of the c2 seat, the candidates are c2's top 5 buys, its own choice and PASS. Each candidate is played to the end on the same hidden-state draws, a paired comparison. The unseen cards are put in canonical order and reshuffled, so the teacher never uses what the player could not see. Continuation: c2 for us, the real opponent for them.</li>
+<li><b>Labels</b>: about 2–3 positions per second per core, from games against a fixed mix of c2, c1, rl-v1 2200 and the GA portfolio-v3 base. Kingdoms are uniform, plus attack, Gardens, trasher and engine slices.</li>
+<li><b>Student</b>: a Deep Sets network over the 33 card tokens, 50k parameters. It scores all legal buys and PASS in one pass, and overrides c2 only by more than a margin chosen on dev kingdoms.</li>
+<li><b>Curriculum</b>: labels → student fit → DAgger (the student plays, the teacher grades) → promotion match.</li>
+</ol>
+<pre>
+ c2 plays a game ──► each buy ──► teacher: 6 candidates × 16-32 paired rollouts to the end
+                                        │  mean score per candidate (label)
+                                        ▼
+                         Deep Sets student (33 card tokens → score per buy)
+                                        │  dev match: student-on-c2 vs plain c2, 3 margins
+                                        ▼
+                   DAgger rounds ──► promotion: 2,000 reserved kingdoms vs c1 and c2
+</pre>
+</section>
+
+<section>
+  <h2>Decisions <span class="muted small">newest first · why things are the way they are</span></h2>
+  <p class="muted small">Logged with <code>python experiments/journal.py --decision "title" "what was chosen and why" "what was rejected"</code>.</p>
+  <div id="decisions"></div>
+</section>
+
+<section>
+  <h2>How to read this site</h2>
+  <div id="guide"></div>
+</section>
+
+<section>
+  <h2>Repo layout</h2>
+  <pre>
+c/bv.c          teacher (paired rollouts), student forward pass in C, bv_play
+bv/core.py      ctypes bridge, seats, frozen models
+bv/student.py   Deep Sets student (torch), export to the C layout
+match.py        paired matches (streams gate / dev / reserved), per-game results
+collect.py      label collection (workers, opponents, kingdom slices, splits)
+train.py        the curriculum run: collect → fit → dev match → DAgger → promotion
+models/         frozen RL-v3 c1 2300, c2 2654, rl-v1 2200 (+ SHA256SUMS)
+engine/, rl-v3/ submodules: the rules (pinned) and the incumbent net
+runs/p1/        status.json, stats.csv, events.jsonl, curriculum.json
+results/        match_*.json summaries + per-game jsonl
+</pre>
+</section>
+</main>
+<footer>Updated automatically every 15 minutes. Numbers are measured on fresh episodes, not estimated.</footer>
+<script src="site.js?v=7b3d32cc"></script>
+<script src="common.js?v=958183f8"></script>
+<script src="project.js?v=092dcfd4"></script>
+<script src="overview.js?v=cb92b7c0"></script>
+</body>
+</html>

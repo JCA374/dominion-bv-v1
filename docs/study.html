@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study</title>
+<link rel="stylesheet" href="style.css?v=d5cc2c7c">
+</head>
+<body>
+<main>
+<h1>Study this project</h1>
+<p class="lede">For someone who wants to learn from this project rather than follow it: what to read in which order, the ideas
+you need, the words we use, how to run it yourself, and a few exercises.</p>
+
+<section>
+  <h2>Reading order</h2>
+  <li>Overview (5 min): the idea and the goal.</li><li>The data (5 min): what one label is.</li><li>The model (5 min).</li><li>Training and Log: dev scores per round.</li><li>Code: <code>c/bv.c</code> (bv_grade, rollout, canon), <code>bv/student.py</code>, <code>train.py</code>, <code>match.py</code>.</li>
+  <ol id="order">
+  </ol>
+</section>
+
+<section>
+  <h2>Key concepts</h2>
+  <div class="box"><b>Paired rollouts (common random numbers)</b>: every candidate buy sees the same shuffles, so the difference between two candidates has far less noise than either value. In <code>bv_grade</code>. People forget it only helps the difference, not the absolute value.</div>
+<div class="box"><b>Winner's curse</b>: pick the best of six noisy estimates and it is too optimistic. The first gate lost (41.5%) for this reason. Fix: require a gain of 2 standard errors, or learn from many positions.</div>
+<div class="box"><b>Policy improvement</b>: with continuation c2, the rollout values are c2's Q-values. Acting greedily on true Q-values is never worse than c2, but only on true ones, not noisy ones.</div>
+<div class="box"><b>Distillation / Expert Iteration</b>: a slow teacher labels positions, and a fast student learns to imitate the teacher's values. DAgger then collects labels from the positions the student itself reaches.</div>
+<div class="box"><b>Deep Sets</b>: one shared network per card plus symmetric pooling. The order of cards doesn't matter, and knowledge transfers between similar cards.</div>
+<div class="box"><b>Information sets</b>: the teacher may only use what the player sees. Hidden zones are canonicalised and resampled, so two positions that look the same give the same labels.</div>
+</section>
+
+<section>
+  <h2>Glossary</h2>
+  <p class="muted small">From <code>glossary.md</code> in the repo (one <code>**term** — meaning</code> per line). The podcast narration uses the same list for names that need a pronunciation.</p>
+  <dl class="glossary" id="glossary"></dl>
+</section>
+
+<section>
+  <h2>Reproduce it</h2>
+  <pre>git clone --recursive https://github.com/JCA374/dominion-bv-v1 && cd dominion-bv-v1
+python -m venv .venv && .venv/bin/pip install numpy torch pytest
+.venv/bin/python -m pytest -q tests        # ~10 s: student C/torch parity, teacher reproducibility
+.venv/bin/python match.py --name gate --bv 1 --k0 32 --k1 32 --margin 0.02 --z 2 --kingdoms 40   # teacher vs c2
+.venv/bin/python -u train.py --run p1      # the curriculum (hours per round on 8 cores)</pre>Frozen models c1 2300 and c2 2654 are in <code>models/</code>.
+</section>
+
+<section>
+  <h2>Exercises</h2>
+  <ol><li>Change <code>--z</code> in the gate (0, 1, 2, 3). Expect a lower override rate and a score closer to 50% as z rises. Where is the best?</li><li>Raise <code>topn</code> from 5 to 10 in <code>train.py</code> CFG. Does dev regret fall, and what does each label cost?</li><li>Train a flat MLP on the same labels (replace Student) and compare dev regret: does the set structure help?</li><li>Measure label noise: grade the same positions twice with different seeds and compute the agreement on the best candidate.</li></ol>
+</section>
+</main>
+<script src="site.js?v=7b3d32cc"></script>
+<script src="common.js?v=958183f8"></script>
+<script src="project.js?v=092dcfd4"></script>
+<script src="study.js?v=ca69f153"></script>
+</body>
+</html>

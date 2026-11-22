@@ -1,0 +1,108 @@
+{
+ "title": "Dominion bv-v1: Buy Value",
+ "icon": "\ud83e\ude99",
+ "repo": "JCA374/dominion-bv-v1",
+ "goal": {
+  "metric": "score",
+  "target": 0.53,
+  "label": "vs RL-v3 c2 / c1 (reserved kingdoms)",
+  "columns": []
+ },
+ "goal_text": "at least 53% against both RL-v3 c1 2300 and c2 2654 on 2,000 reserved kingdoms, both seats, 95% interval above 50%",
+ "names": {},
+ "chart": {
+  "x": "states",
+  "x_scale": 0.001,
+  "x_label": "thousand labelled buy positions",
+  "y_label": "score % (student on c2 vs c2, 600 dev games)",
+  "series": [
+   {
+    "key": "dev_m0.0",
+    "label": "margin 0",
+    "style": "both",
+    "color": "--accent"
+   },
+   {
+    "key": "dev_m0.02",
+    "label": "margin 0.02",
+    "style": "both",
+    "color": "--good"
+   },
+   {
+    "key": "dev_m0.05",
+    "label": "margin 0.05",
+    "style": "both",
+    "color": "--warn"
+   }
+  ]
+ },
+ "charts": [
+  {
+   "title": "Dev regret (teacher points lost by the pick)",
+   "y_label": "regret",
+   "percent": false,
+   "series": [
+    {
+     "key": "dev_regret",
+     "label": "student"
+    },
+    {
+     "key": "dev_regret_incumbent",
+     "label": "c2 (incumbent)"
+    }
+   ]
+  },
+  {
+   "title": "Student agrees with teacher's best",
+   "percent": true,
+   "series": [
+    {
+     "key": "dev_top1",
+     "label": "top-1"
+    }
+   ]
+  },
+  {
+   "title": "Override rate in dev match",
+   "percent": true,
+   "series": [
+    {
+     "key": "override",
+     "label": "overrides / buys"
+    }
+   ]
+  },
+  {
+   "title": "Label throughput",
+   "y_label": "states/s",
+   "percent": false,
+   "series": [
+    {
+     "key": "states_per_s",
+     "label": "states per second"
+    }
+   ]
+  }
+ ],
+ "cards": [
+  {
+   "label": "Labels",
+   "key": "states",
+   "fmt": "k",
+   "sub": "graded buy positions"
+  }
+ ],
+ "stale_minutes": 60,
+ "alive_pattern": "train.py --run {run}( |$)",
+ "main_run": "p1",
+ "push_globs": [
+  "runs/*/stats.csv",
+  "runs/*/events.jsonl",
+  "runs/*/curriculum.json",
+  "runs/*/status.json",
+  "results/*.json"
+ ],
+ "tab_labels": {
+  "inputs.html": "The data"
+ }
+}

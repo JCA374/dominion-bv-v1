@@ -25,7 +25,7 @@ def init(a):
     from bv import core
     _A.update(a)
     st = np.load(a["student"]).astype(np.float32) if a["student"] else None
-    core.configure(a["k0"], a["k1"], a["se"], a["topn"], a["margin"], st)
+    core.configure(a["k0"], a["k1"], a["se"], a["topn"], a["margin"], st, a["z"])
 
 
 def job(g):
@@ -80,6 +80,7 @@ def main():
     ap.add_argument("--topn", type=int, default=5)
     ap.add_argument("--margin", type=float, default=0.0)
     ap.add_argument("--student", default="")
+    ap.add_argument("--z", type=float, default=0.0)
     ap.add_argument("--stream", default="gate")
     ap.add_argument("--kingdoms", type=int, default=200)
     ap.add_argument("--workers", type=int, default=6)

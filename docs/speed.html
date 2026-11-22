@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speed</title>
+<link rel="stylesheet" href="style.css?v=d5cc2c7c">
+</head>
+<body>
+<main>
+<h1>Speed</h1>
+<p class="lede">Machine: 8 cores (laptop), 7 GB RAM, no usable GPU (integrated graphics). Everything that costs time is C: the engine and RL-v3's network, run at batch size 1 inside rollouts.
+<ul><li>Plain c2 vs c2 game: ~0.05–0.3 s.</li>
+<li>One rollout from a buy to the end of the game: ~5 ms per core (about 200 per second per core).</li>
+<li>Teacher game (every buy graded, adaptive 16→64 draws): ~97 s. With 16→32 draws: ~35 s.</li>
+<li>Labels: one position costs about 6 candidates × 16–32 rollouts ≈ 0.5–1 s per core. Measured rates are on the Training tab (states_per_s).</li>
+<li>Student: 50k parameters, one pass per buy in C (microseconds). Training on 100k positions takes a few minutes on CPU.</li></ul>
+A GPU would not help: the cost is many small sequential game simulations, not big matrix products. More CPU cores would.</p>
+</main>
+<script src="site.js?v=7b3d32cc"></script>
+<script src="common.js?v=958183f8"></script>
+<script src="project.js?v=092dcfd4"></script>
+
+</body>
+</html>

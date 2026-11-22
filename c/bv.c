@@ -131,6 +131,8 @@ void bv_set_cfg(int k0, int k1, float se_mult, int topn, float margin) {
 /* per seat: 0 plain net, 1 teacher plays (margin), 2 teacher labels only (incumbent plays), 3 student plays
  * (margin vs incumbent), 4 student plays + teacher labels (DAgger) */
 static int g_bv_mode[2];
+static float g_z;               /* teacher play: the gain must also exceed g_z paired SEs */
+void bv_set_z(float z) { g_z = z; }
 static const float *g_student;
 static long g_rollouts, g_capped, g_errors, g_graded, g_overrides, g_buys;
 void bv_set_student(const float *prm) { g_student = prm; }
@@ -267,7 +269,7 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
         if (mode == 1) {
             int b = inc;
             for (int c = 0; c < RL_NA; c++) if (!isnan(q[c]) && q[c] > q[b]) b = c;
-            if (q[b] - q[inc] > g_cfg.margin) a = b;
+            if (q[b] - q[inc] > g_cfg.margin && q[b] - q[inc] > g_z * se[b]) a = b;
         }
     }
     if ((mode == 3 || mode == 4) && g_student) {

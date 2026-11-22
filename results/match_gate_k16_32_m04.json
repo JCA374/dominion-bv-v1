@@ -1,0 +1,32 @@
+{
+ "name": "gate_k16_32_m04",
+ "args": {
+  "name": "gate_k16_32_m04",
+  "base": "c2",
+  "bv": 1,
+  "opp": "c2",
+  "k0": 16,
+  "k1": 32,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.04,
+  "student": "",
+  "stream": "gate",
+  "kingdoms": 120,
+  "workers": 7
+ },
+ "t": "2026-11-22 22:49",
+ "done": false,
+ "wall_secs": 872,
+ "games": 100,
+ "score": 0.415,
+ "ci95": [
+  0.325,
+  0.5
+ ],
+ "override_rate": 0.2174,
+ "secs_per_game": 60.48,
+ "rollouts": 437600,
+ "capped": 0,
+ "errors": 0
+}
