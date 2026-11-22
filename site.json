@@ -17,20 +17,20 @@
   "y_label": "score % (student on c2 vs c2, 600 dev games)",
   "series": [
    {
-    "key": "dev_m0.0",
-    "label": "margin 0",
+    "key": "dev_m0.02",
+    "label": "margin 0.02",
     "style": "both",
     "color": "--accent"
    },
    {
-    "key": "dev_m0.02",
-    "label": "margin 0.02",
+    "key": "dev_m0.05",
+    "label": "margin 0.05",
     "style": "both",
     "color": "--good"
    },
    {
-    "key": "dev_m0.05",
-    "label": "margin 0.05",
+    "key": "dev_m0.1",
+    "label": "margin 0.10",
     "style": "both",
     "color": "--warn"
    }
