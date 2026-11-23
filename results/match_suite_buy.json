@@ -40,24 +40,24 @@
   },
   "student_sha": null
  },
- "t": "2026-11-23 20:38",
+ "t": "2026-11-23 20:49",
  "done": false,
- "wall_secs": 1551,
+ "wall_secs": 2201,
  "latency_s": {
-  "decisions": 3988,
-  "p50": 0.9133,
-  "p95": 3.0477
+  "decisions": 5477,
+  "p50": 0.9556,
+  "p95": 3.1226
  },
  "action_overrides": null,
- "games": 150,
- "score": 0.58,
+ "games": 200,
+ "score": 0.6075,
  "ci95": [
-  0.52,
-  0.64
+  0.5575,
+  0.6575
  ],
- "override_rate": 0.0429,
- "secs_per_game": 30.91,
- "rollouts": 794816,
+ "override_rate": 0.0451,
+ "secs_per_game": 32.95,
+ "rollouts": 1085504,
  "capped": 0,
  "errors": 0
 }
