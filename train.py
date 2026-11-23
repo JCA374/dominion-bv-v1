@@ -51,7 +51,7 @@ class Run:
         json.dump(self.s, open(os.path.join(self.d, "status.json"), "w"), indent=1)
 
     def event(self, kind, msg, **kw):
-        e = {"t": time.strftime("%Y-%m-%d %H:%M"), "kind": kind, "msg": msg, **kw}
+        e = {"t": time.strftime("%Y-%m-%d %H:%M"), "kind": kind, "msg": msg, "note": msg, **kw}
         open(os.path.join(self.d, "events.jsonl"), "a").write(json.dumps(e) + "\n")
         print(f"[{e['t']}] {kind}: {msg}", flush=True)
 

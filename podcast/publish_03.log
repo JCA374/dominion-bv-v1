@@ -1,2 +1,13 @@
 [07:25:15] prep + narrate (Kokoro)
 [07:52:22] listen-check (Whisper)
+[07:55:04] pipeline stages PASS: 5/5
+  listen flag:     4:31  missing  expected: 'point'                          heard: '–'
+[07:55:04] episode-03.mp3: 373 s
+3 episode(s)
+[07:55:05] tests
+3 passed in 12.04s
+[07:55:22] waiting for GitHub Pages (a3189abfcf2dfb2b024d27561d20c957dbbf75ac)
+[07:56:22]   200 https://jca374.github.io/dominion-bv-v1/podcast/index.html
+[07:56:23]   200 https://jca374.github.io/dominion-bv-v1/podcast/episode-03.mp3
+[07:56:23]   200 https://jca374.github.io/dominion-bv-v1/data/podcast.json
+DEPLOYED https://jca374.github.io/dominion-bv-v1/podcast/index.html (episode 03: Making the teacher twice as fast, 373 s)

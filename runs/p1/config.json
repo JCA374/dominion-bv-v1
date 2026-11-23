@@ -1,7 +1,7 @@
 {
  "pilot_states": 2000,
  "round_states": 20000,
- "workers": 5,
+ "workers": 7,
  "k0": 16,
  "k1": 16,
  "se": 1.5,

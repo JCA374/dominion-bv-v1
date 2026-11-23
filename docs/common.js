@@ -73,7 +73,7 @@ function eventHtml(e) {
       case 'crash': title = '⚠️ Training crashed and was restarted from its last checkpoint'; body = e.note; break;
       case 'override': title = `Manual change: ${e.what}`; body = e.reason; break;
       case 'goal_check': title = `🎯 Goal check: ${pct(e.landed ?? e.value)} on ${e.n} unseen episodes`; body = `${e.label || e.policy || ''}. 95% interval ${e.ci ? pct(e.ci[0]) + ' – ' + pct(e.ci[1]) : '–'}. ${e.note || ''}`; break;
-      default: title = e.kind.replace(/_/g, ' '); body = e.note || '';
+      default: title = e.title || e.kind.replace(/_/g, ' '); body = e.note || e.msg || e.text || '';
     }
   }
   const img = e.replay ? `<img loading="lazy" src="${e.replay}" title="click to replay" alt="replay of the agent at this moment">` : '';
