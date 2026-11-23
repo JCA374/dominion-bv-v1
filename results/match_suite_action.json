@@ -40,28 +40,40 @@
   },
   "student_sha": null
  },
- "t": "2026-11-23 21:33",
+ "t": "2026-11-23 21:43",
  "done": false,
- "wall_secs": 1838,
+ "wall_secs": 2445,
  "latency_s": {
-  "decisions": 8307,
-  "p50": 0.5338,
-  "p95": 1.6908
+  "decisions": 11277,
+  "p50": 0.5291,
+  "p95": 1.6331
  },
  "action_overrides": {
-  "n": 173,
-  "mean_gain": 0.2206,
+  "n": 229,
+  "mean_gain": 0.2166,
   "top_changes": [
+   [
+    "Sentry -> Militia",
+    7
+   ],
+   [
+    "Militia -> end actions",
+    7
+   ],
    [
     "Festival -> end actions",
     7
    ],
    [
-    "Militia -> end actions",
+    "Sentry -> Merchant",
     6
    ],
    [
-    "Sentry -> Militia",
+    "Village -> end actions",
+    5
+   ],
+   [
+    "Laboratory -> Poacher",
     5
    ],
    [
@@ -69,11 +81,11 @@
     5
    ],
    [
-    "Village -> Militia",
-    4
+    "Remodel -> end actions",
+    5
    ],
    [
-    "Village -> end actions",
+    "Village -> Militia",
     4
    ],
    [
@@ -81,36 +93,24 @@
     4
    ],
    [
-    "Laboratory -> Poacher",
+    "Vassal -> end actions",
     4
    ],
    [
     "Festival -> Laboratory",
     4
-   ],
-   [
-    "Sentry -> Merchant",
-    4
-   ],
-   [
-    "Remodel -> end actions",
-    4
-   ],
-   [
-    "Village -> Artisan",
-    3
    ]
   ]
  },
- "games": 150,
- "score": 0.5867,
+ "games": 200,
+ "score": 0.57,
  "ci95": [
-  0.5333,
-  0.6367
+  0.5149,
+  0.6163
  ],
  "override_rate": 0.0,
- "secs_per_game": 36.59,
- "rollouts": 841696,
+ "secs_per_game": 36.37,
+ "rollouts": 1140160,
  "capped": 0,
  "errors": 0
 }

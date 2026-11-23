@@ -1,0 +1,63 @@
+{
+ "name": "p1_r25_dev_m0.02",
+ "args": {
+  "name": "p1_r25_dev_m0.02",
+  "base": "c2",
+  "bv": 3,
+  "opp": "c2",
+  "k0": 16,
+  "k1": 64,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.02,
+  "student": "/home/jonas/code/games/dominion/trainers/bv-v1/runs/p1/student_25.npy",
+  "z": 0.0,
+  "act": 0,
+  "resume": false,
+  "stream": "dev",
+  "kingdoms": 300,
+  "workers": 4
+ },
+ "manifest": {
+  "name": "p1_r25_dev_m0.02",
+  "base": "c2",
+  "bv": 3,
+  "opp": "c2",
+  "k0": 16,
+  "k1": 64,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.02,
+  "student": "/home/jonas/code/games/dominion/trainers/bv-v1/runs/p1/student_25.npy",
+  "z": 0.0,
+  "act": 0,
+  "stream": "dev",
+  "kingdoms": 300,
+  "models": {
+   "rl3_c2_2654.npy": "0018fb85b6cc87ec",
+   "rl3_c1_2300.npy": "daae8a0049b13346",
+   "rl1_r2_2200.npy": "47ed00b6f7cfa628"
+  },
+  "student_sha": "e7369e00574051b8"
+ },
+ "t": "2026-11-23 21:46",
+ "done": true,
+ "wall_secs": 8,
+ "latency_s": {
+  "decisions": 16052,
+  "p50": 0.0004,
+  "p95": 0.0007
+ },
+ "action_overrides": null,
+ "games": 600,
+ "score": 0.505,
+ "ci95": [
+  0.4875,
+  0.5233
+ ],
+ "override_rate": 0.0194,
+ "secs_per_game": 0.05,
+ "rollouts": 0,
+ "capped": 0,
+ "errors": 0
+}
