@@ -178,18 +178,66 @@ int bv_lat(float *out, int max) {
 static double bv_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + 1e-9 * t.tv_nsec; }
 static bv_rec *g_bvrec;
 
-/* hidden zones in a canonical order, so equal observations give equal samples */
+/* Known top cards. The draw pile is a shuffled block, and cards put on top later (Harbinger, Artisan, Sentry,
+ * Bureaucrat's Silver) are known to their owner until drawn. Tracked from the live game at every decision: u = the
+ * unknown part of the pile (its bottom); a shuffle (the player's rng moves) makes it all unknown, a draw takes the top
+ * first, so u = min(u, deck_n) between decisions and the rest is known. Every top-deck move asks a decision before it
+ * (or has no draw between the move and the next decision), so counting at decisions is exact for this card set.
+ * Only the owner's known cards are kept; the opponent's (Bureaucrat reveals) are still sampled. */
+static int g_kn_on, g_kn_u[2], g_known;        /* g_known: known top cards of the player being graded */
+static uint64_t g_kn_rng[2];
+static long g_kn_stats[2];                      /* decisions graded, of which with known top cards */
+void bv_known_stats(long *o) { o[0] = g_kn_stats[0]; o[1] = g_kn_stats[1]; }
+static void kn_observe(const de_game *g) {
+    for (int i = 0; i < 2; i++) {
+        const de_player *p = &g->p[i];
+        if (p->rng != g_kn_rng[i]) { g_kn_u[i] = p->deck_n; g_kn_rng[i] = p->rng; }
+        else if (p->deck_n < g_kn_u[i]) g_kn_u[i] = p->deck_n;
+    }
+}
+static int kn_known(const de_game *g, int me) {
+    int k = g_kn_on ? g->p[me].deck_n - g_kn_u[me] : 0;
+    return k > 0 ? k : 0;
+}
+
+/* hidden zones in a canonical order, so equal observations give equal samples; my known top cards stay in place */
 static int cmp_int(const void *a, const void *b) { return *(const int *)a - *(const int *)b; }
 static void canon(de_game *c, int me) {
     for (int i = 0; i < c->nplayers; i++) {
         de_player *p = &c->p[i];
-        if (i == me) { qsort(p->deck, p->deck_n, sizeof(int), cmp_int); continue; }
+        if (i == me) { qsort(p->deck, p->deck_n - g_known, sizeof(int), cmp_int); continue; }
         int all[2 * DE_ZONE], n = 0;
         for (int k = 0; k < p->deck_n; k++) all[n++] = p->deck[k];
         for (int k = 0; k < p->hand_n; k++) all[n++] = p->hand[k];
         qsort(all, n, sizeof(int), cmp_int);
         memcpy(p->deck, all, p->deck_n * sizeof(int));
         memcpy(p->hand, all + p->deck_n, p->hand_n * sizeof(int));
+    }
+}
+
+static void bv_shuffle(int *a, int n, uint64_t *rng) {     /* = engine.c's shuffle */
+    for (int i = n - 1; i > 0; i--) {
+        int j = (int)(de_rng_next(rng) % (uint64_t)(i + 1));
+        int t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+}
+/* de_hide, except that my g_known top cards keep their place (identical to de_hide, bit for bit, when g_known = 0) */
+static void bv_hide(de_game *g, int me, uint64_t seed) {
+    if (!g_known) { de_hide(g, me, seed); return; }
+    uint64_t master = seed ? seed : 1;
+    for (int i = 0; i < g->nplayers; i++) {
+        de_player *p = &g->p[i];
+        p->rng = de_rng_next(&master) | 1;
+        if (i != me) {
+            int h = p->hand_n;
+            memcpy(p->deck + p->deck_n, p->hand, (size_t)h * sizeof(int));
+            p->deck_n += h;
+            p->hand_n = 0;
+            bv_shuffle(p->deck, p->deck_n, &p->rng);
+            for (int k = 0; k < h; k++) p->hand[p->hand_n++] = p->deck[--p->deck_n];   /* = draw: deck >= h */
+        } else {
+            bv_shuffle(p->deck, p->deck_n - g_known, &p->rng);
+        }
     }
 }
 
@@ -224,7 +272,7 @@ static float rollout(const de_game *g, int me, int cand, uint64_t seed) {
     static de_game c;
     c = *g;
     canon(&c, me);
-    de_hide(&c, me, seed);
+    bv_hide(&c, me, seed);
     rl_seat rs[2] = {g_cont[0], g_cont[1]};
     rs[0].rng = rs[1].rng = seed ^ 0x9E3779B97F4A7C15ULL;
     de_decide_fn fn = g_fast ? bv_fast_decide : rl_decide;
@@ -387,6 +435,7 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
                      const int *opts, int n, int may_pass) {
     rl_seat *s = ctx;
     int mode = g_bv_mode[me & 1];
+    if (g_kn_on && !g_in_plan) { kn_observe(g); g_known = kn_known(g, me); }
     if (kind == DE_PLAY_ACTION && g_act && mode && !g_in_plan && s->mode == RL_NET && n + (may_pass != 0) >= 2)
         return bv_act_decide(s, g, me, subject, opts, n, may_pass);
     if (kind == DE_BUY && g_act == 2) mode = 0;
@@ -418,6 +467,7 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
                 rng = &rr;
             }
             K = bv_grade(g, me, ok, lg, inc, rng, q, se, mask, caps);
+            g_kn_stats[0]++; g_kn_stats[1] += g_known > 0;
             g_cfg = keep;
             if (K < 0) { g_rejected++; K = 0; }          /* an engine error in a rollout: not a label */
         }
@@ -489,7 +539,9 @@ int bv_play(const int *mode, const float *prm0, const float *prm1, const int *nh
     de_agent agents[2] = {{bv_decide, &st[0]}, {bv_decide, &st[1]}};
     de_game g;
     de_init(&g, kingdom, kn, 2, seed);
+    g_kn_on = 1; g_kn_rng[0] = g_kn_rng[1] = 0; g_known = 0;
     de_run(&g, agents);
+    g_kn_on = 0; g_known = 0;
     out[0] = de_winners(&g);
     out[1] = de_score(&g, 0);
     out[2] = de_score(&g, 1);
@@ -514,7 +566,7 @@ void bv_hide_probe(const de_game *g, int me, uint64_t seed, int *my_deck, int *o
     static de_game c;
     c = *g;
     canon(&c, me);
-    de_hide(&c, me, seed);
+    bv_hide(&c, me, seed);
     memcpy(my_deck, c.p[me].deck, c.p[me].deck_n * sizeof(int));
     memcpy(opp_hand, c.p[1 - me].hand, c.p[1 - me].hand_n * sizeof(int));
 }
@@ -523,7 +575,8 @@ void bv_hide_probe(const de_game *g, int me, uint64_t seed, int *my_deck, int *o
  * that state (k draws, all legal buys) three ways from one seed: as is; with my draw pile in another order and the
  * opponent's hidden cards split differently between hand and deck (the same observation); and with one opponent card
  * replaced by another (a different observation). out[0] = max |q diff| of the same observation (0 expected), out[1] =
- * of the different one (> 0 expected). Returns 1 if a state was found. */
+ * of the different one (> 0 expected); out[2], out[3]: the same with my top 2 cards known (rest reordered: 0 expected;
+ * a different known top card: > 0 expected). Returns 1 if a state was found. */
 static de_game g_snap;
 static int g_snap_on, g_snap_got, g_snap_turn;
 static int snap_decide(void *ctx, const de_game *g, int kind, int me, int subject, const int *opts, int n, int may_pass) {
@@ -564,13 +617,26 @@ int bv_canon_test(const float *prm, int nh, int nf, const int *kingdom, int kn, 
     bv_cfg keep = g_cfg;
     g_cfg.k0 = g_cfg.k1 = k; g_cfg.topn = RL_NA;
     for (int j = 0; j < 3; j++) { uint64_t r = 12345; bv_grade(&v[j], 0, ok, lg, inc, &r, q[j], se, mask, caps); }
+    /* known top cards (2 of them, as after a Sentry): the unknown rest in another order is the same observation; the
+     * same cards with a different card on top is a different one */
+    float qk[3][RL_NA];
+    de_game w[3] = {g_snap, g_snap, g_snap};
+    de_player *p1 = &w[1].p[0], *p2 = &w[2].p[0];
+    int un = p1->deck_n - 2;
+    for (int i = 0; i < un / 2; i++) { int t = p1->deck[i]; p1->deck[i] = p1->deck[un - 1 - i]; p1->deck[un - 1 - i] = t; }
+    int top = p2->deck_n - 1, sw = -1;
+    for (int i = 0; i < un; i++) if (p2->deck[i] != p2->deck[top]) { sw = i; break; }
+    if (sw >= 0) { int t = p2->deck[sw]; p2->deck[sw] = p2->deck[top]; p2->deck[top] = t; }
+    g_known = 2;
+    for (int j = 0; j < 3; j++) { uint64_t r = 12345; bv_grade(&w[j], 0, ok, lg, inc, &r, qk[j], se, mask, caps); }
+    g_known = 0;
     g_cfg = keep;
-    out[0] = out[1] = 0;
+    out[0] = out[1] = out[2] = out[3] = 0;
     for (int a = 0; a < RL_NA; a++) {
         if (!mask[a]) continue;
-        float d1 = fabsf(q[1][a] - q[0][a]), d2 = fabsf(q[2][a] - q[0][a]);
-        if (d1 > out[0]) out[0] = d1;
-        if (d2 > out[1]) out[1] = d2;
+        float d[4] = {fabsf(q[1][a] - q[0][a]), fabsf(q[2][a] - q[0][a]), fabsf(qk[1][a] - qk[0][a]),
+                      sw >= 0 ? fabsf(qk[2][a] - qk[0][a]) : 0};
+        for (int j = 0; j < 4; j++) if (d[j] > out[j]) out[j] = d[j];
     }
     return 1;
 }

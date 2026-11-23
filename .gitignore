@@ -16,3 +16,5 @@ bench/bench
 bench/bench_pg
 bench/kern
 bench/gmon.out
+bv_suite.so
+bv_*.so

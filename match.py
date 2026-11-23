@@ -124,6 +124,8 @@ def main():
     ap.add_argument("--kingdoms", type=int, default=200)
     ap.add_argument("--workers", type=int, default=6)
     a = vars(ap.parse_args())
+    if a["stream"] == "suite" and not os.environ.get("BV_SO") and os.path.exists(os.path.join(ROOT, "bv_suite.so")):
+        os.environ["BV_SO"] = os.path.join(ROOT, "bv_suite.so")   # all suite arms on one frozen build (the old sampler)
     gs = games(a["stream"], a["kingdoms"])
     out = os.path.join(ROOT, "results", f"match_{a['name']}")
     from bv import core as _c

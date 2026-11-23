@@ -36,7 +36,8 @@ def meta(a):
     return {"k0": a["k0"], "k1": a["k1"], "se": a["se"], "topn": a["topn"], "margin": a["margin"],
             "dagger": a["dagger"], "student": a["student"] and core.hashlib.sha256(open(a["student"], "rb").read()).hexdigest()[:16],
             "models": {m: core.sha(m) for m in ("rl3_c2_2654.npy", "rl3_c1_2300.npy", "rl1_r2_2200.npy")},
-            "opps": OPPS, "slices": list(SLICES), "round": a.get("round", 0)}
+            "opps": OPPS, "slices": list(SLICES), "round": a.get("round", 0), "run": a["run"],
+            "sampler": "known-top"}
 
 
 def save_shard(out, name, cat, info):
@@ -50,9 +51,16 @@ def worker(a, wid, quota, q):
     from bv import core
     from match import eval_kingdoms
     st = np.load(a["student"]).astype(np.float32) if a["student"] else None
+    info = meta(a)
+    if a["student"]:                                  # keep the exact student: DAgger labels replay with it
+        f = core.student_file(a["run"], info["student"])
+        if not os.path.exists(f):
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            tmp = f"{f}.{wid}.tmp.npy"
+            np.save(tmp, np.load(a["student"]))
+            os.replace(tmp, f)
     core.configure(a["k0"], a["k1"], a["se"], a["topn"], a["margin"], st)
     banned = eval_kingdoms()
-    info = meta(a)
     rng = random.Random(f"bv collect {a['run']} round {a.get('round', 0)} worker {wid}")   # deterministic: replayable
     out = os.path.join(ROOT, "data", a["run"])
     os.makedirs(out, exist_ok=True)

@@ -31,8 +31,11 @@ def main():
             if "KING" not in z.files:
                 continue                                   # old shards have no replay key
             D = {x: z[x] for x in ("KING", "SEED", "SEAT0", "OPP", "DIDX", "SPLIT", "Q", "INC", "CAND")}
+            meta = json.loads(str(z["META"]))
+        if meta.get("dagger") and not os.path.exists(core.student_file(meta.get("run", "p1"), meta["student"])):
+            continue                                   # a DAgger shard whose student was not kept: not replayable
         for i in np.where(D["SPLIT"] == 0)[0]:
-            rows.append((core.key_of(D, i), int(D["DIDX"][i]), D["Q"][i], int(D["INC"][i]), D["CAND"][i]))
+            rows.append((core.key_of(D, i, meta), int(D["DIDX"][i]), D["Q"][i], int(D["INC"][i]), D["CAND"][i]))
     rng = np.random.default_rng(7)
     pick = rng.permutation(len(rows))[:a.n]
     items = [(rows[i][0], rows[i][1], 1_000_003 + int(i), a.k) for i in pick]

@@ -21,7 +21,7 @@ for p in (AZ, os.path.join(AZ, "dominion-v1")):
 from az.base import base_genome, random_kingdom  # noqa: E402,F401
 from dominion_engine.cards import ID, NAME, NUM_CARDS  # noqa: E402,F401
 
-SO = os.path.join(ROOT, "bv.so")
+SO = os.environ.get("BV_SO") or os.path.join(ROOT, "bv.so")     # BV_SO: a test build beside the live one
 SRC = [os.path.join(ENGINE_C, "engine.c"), os.path.join(ROOT, "c", "bv.c")]
 DEPS = SRC + [os.path.join(ROOT, "c", "fastnet.h"), os.path.join(RL3, "c", "rl.c"), os.path.join(AZ, "c", "az.c"), os.path.join(ENGINE_C, "engine.h")]
 
@@ -57,6 +57,8 @@ lib.bv_set_regrade.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctyp
 lib.bv_rejected.restype = ctypes.c_long
 lib.bv_lat.argtypes = [_F, ctypes.c_int]
 lib.bv_act_log.argtypes = [_F, ctypes.c_int]
+if hasattr(lib, "bv_known_stats"):              # absent in the frozen suite build
+    lib.bv_known_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
 lib.bv_canon_test.argtypes = [_F, ctypes.c_int, ctypes.c_int, _I, ctypes.c_int, ctypes.c_uint64, ctypes.c_int, ctypes.c_int, _F]
 lib.rl_num_params.argtypes = [ctypes.c_int, ctypes.c_int]
 GA, NET = 0, 2
@@ -107,6 +109,7 @@ lib.bv_act_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
 
 
 def configure(k0=16, k1=64, se_mult=1.5, topn=5, margin=0.0, student=None, z=0.0):
+    configure.last = dict(k0=k0, k1=k1, se_mult=se_mult, topn=topn, margin=margin, student=student, z=z)
     lib.bv_set_cfg(k0, k1, se_mult, topn, margin)
     lib.bv_set_z(z)
     configure.student = student                    # keep a reference alive
@@ -189,17 +192,33 @@ def action_log():
 
 
 def replay_game(key):
-    """The seats and kingdom of a recorded label (key: kingdom, seed, seat, opp) as collect.py played it."""
+    """The seats and kingdom of a recorded label (key: kingdom, seed, seat, opp, and for DAgger labels the student
+    file, margin and topn it played with) as collect.py played it. Configures the student (or none) to match."""
     k = key["kingdom"]
-    me = seat_for("c2", k, 2)
+    st = np.load(key["student"]).astype(np.float32) if key.get("student") else None
+    c = dict(getattr(configure, "last", {}))
+    c.update(topn=key.get("topn", 5), margin=key.get("margin", 0.02), student=st)
+    configure(**c)
+    me = seat_for("c2", k, 4 if st is not None else 2)
     op = seat_for(key["opp"], k)
     return ([me, op] if key["seat"] == 0 else [op, me]), k
 
 
-def key_of(D, i, opps=("c2", "c1", "rl1", "ga2")):
-    """The replay key of label row i of a loaded/np.load-ed shard dict."""
-    return {"kingdom": str(D["KING"][i]).split(","), "seed": int(D["SEED"][i]), "seat": int(D["SEAT0"][i]),
-            "opp": opps[int(D["OPP"][i])]}
+def student_file(run, sha):
+    """Where collect.py keeps the exact student a DAgger round played with (content-addressed by its sha)."""
+    return os.path.join(ROOT, "data", run, "students", f"{sha}.npy")
+
+
+def key_of(D, i, meta=None, opps=("c2", "c1", "rl1", "ga2")):
+    """The replay key of label row i of a loaded/np.load-ed shard dict; meta = the shard's META (needed for DAgger
+    rows: they replay with the same student)."""
+    key = {"kingdom": str(D["KING"][i]).split(","), "seed": int(D["SEED"][i]), "seat": int(D["SEAT0"][i]),
+           "opp": opps[int(D["OPP"][i])]}
+    if meta is not None:
+        key.update(topn=meta["topn"], margin=meta["margin"])
+        if meta.get("dagger"):
+            key["student"] = student_file(meta.get("run", "p1"), meta["student"])
+    return key
 
 
 def regrade(key, didx, k, seed, all_legal=True):
@@ -217,11 +236,19 @@ def regrade(key, didx, k, seed, all_legal=True):
 
 
 def canon_test(seed, turn=5, k=8, kingdom=None):
-    """bv_canon_test: (max |q diff| same observation, max |q diff| different observation) or None."""
+    """bv_canon_test: max |q diff| for (same observation, different observation, same observation with 2 known top
+    cards, a different known top card), or None."""
     import random as _r
     kg = kingdom or random_kingdom(_r.Random(seed))
     p = params("rl3_c2_2654.npy")
     nh, nf = net_shape(p)
-    out = np.zeros(2, np.float32)
+    out = np.zeros(4, np.float32)
     ok = lib.bv_canon_test(_f(p), nh, nf, _ints([ID[c] for c in kg]), len(kg), seed, turn, k, _f(out))
-    return (float(out[0]), float(out[1])) if ok else None
+    return tuple(float(v) for v in out) if ok else None
+
+
+def known_stats():
+    """(graded decisions, of which with known top cards in my draw pile) since the library loaded."""
+    o = (ctypes.c_long * 2)()
+    lib.bv_known_stats(o)
+    return int(o[0]), int(o[1])
