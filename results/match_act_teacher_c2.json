@@ -18,18 +18,18 @@
   "kingdoms": 100,
   "workers": 2
  },
- "t": "2026-11-23 18:56",
- "done": false,
- "wall_secs": 2086,
- "games": 150,
- "score": 0.5567,
+ "t": "2026-11-23 19:09",
+ "done": true,
+ "wall_secs": 2881,
+ "games": 200,
+ "score": 0.5625,
  "ci95": [
-  0.4967,
-  0.6152
+  0.515,
+  0.6075
  ],
  "override_rate": 0.0,
- "secs_per_game": 27.51,
- "rollouts": 758976,
+ "secs_per_game": 28.75,
+ "rollouts": 1030944,
  "capped": 2,
  "errors": 0
 }
