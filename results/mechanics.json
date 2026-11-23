@@ -1,0 +1,501 @@
+{
+ "mix": {
+  "games": 200,
+  "decisions_per_game": 246.1,
+  "turns_per_game": 39.7,
+  "kinds": [
+   {
+    "kind": "play action",
+    "per_game": 106.3,
+    "share": 0.432,
+    "mean_options": 3.19
+   },
+   {
+    "kind": "buy",
+    "per_game": 54.34,
+    "share": 0.2208,
+    "mean_options": 11.24
+   },
+   {
+    "kind": "Sentry card",
+    "per_game": 18.26,
+    "share": 0.0742,
+    "mean_options": 3.0
+   },
+   {
+    "kind": "Militia discard",
+    "per_game": 11.24,
+    "share": 0.0457,
+    "mean_options": 3.52
+   },
+   {
+    "kind": "Chapel trash",
+    "per_game": 10.45,
+    "share": 0.0425,
+    "mean_options": 2.81
+   },
+   {
+    "kind": "Cellar discard",
+    "per_game": 8.68,
+    "share": 0.0353,
+    "mean_options": 3.77
+   },
+   {
+    "kind": "Throne Room",
+    "per_game": 7.33,
+    "share": 0.0298,
+    "mean_options": 3.45
+   },
+   {
+    "kind": "Vassal play",
+    "per_game": 5.68,
+    "share": 0.0231,
+    "mean_options": 2.0
+   },
+   {
+    "kind": "Library skip",
+    "per_game": 4.35,
+    "share": 0.0177,
+    "mean_options": 2.0
+   },
+   {
+    "kind": "Artisan gain",
+    "per_game": 3.3,
+    "share": 0.0134,
+    "mean_options": 13.28
+   },
+   {
+    "kind": "Remodel gain",
+    "per_game": 3.26,
+    "share": 0.0133,
+    "mean_options": 11.38
+   },
+   {
+    "kind": "Artisan topdeck",
+    "per_game": 3.26,
+    "share": 0.0132,
+    "mean_options": 4.07
+   },
+   {
+    "kind": "Remodel trash",
+    "per_game": 2.93,
+    "share": 0.0119,
+    "mean_options": 3.03
+   },
+   {
+    "kind": "Sentry top",
+    "per_game": 2.24,
+    "share": 0.0091,
+    "mean_options": 2.0
+   },
+   {
+    "kind": "Harbinger topdeck",
+    "per_game": 1.94,
+    "share": 0.0079,
+    "mean_options": 6.37
+   },
+   {
+    "kind": "Poacher discard",
+    "per_game": 1.1,
+    "share": 0.0045,
+    "mean_options": 3.87
+   },
+   {
+    "kind": "Workshop gain",
+    "per_game": 0.76,
+    "share": 0.0031,
+    "mean_options": 10.07
+   },
+   {
+    "kind": "Moneylender trash",
+    "per_game": 0.52,
+    "share": 0.0021,
+    "mean_options": 2.0
+   },
+   {
+    "kind": "Mine trash",
+    "per_game": 0.04,
+    "share": 0.0001,
+    "mean_options": 2.43
+   },
+   {
+    "kind": "Mine gain",
+    "per_game": 0.04,
+    "share": 0.0001,
+    "mean_options": 2.14
+   },
+   {
+    "kind": "Bureaucrat topdeck",
+    "per_game": 0.03,
+    "share": 0.0001,
+    "mean_options": 2.0
+   },
+   {
+    "kind": "Bandit trash",
+    "per_game": 0.02,
+    "share": 0.0001,
+    "mean_options": 2.0
+   }
+  ]
+ },
+ "labels": {
+  "positions": 430092,
+  "pairs_tested": 748,
+  "best_pairs": [
+   {
+    "c2": "PASS",
+    "alt": "Harbinger",
+    "gain": 0.0047,
+    "se": 0.0023,
+    "n": 669,
+    "z": 2.0
+   },
+   {
+    "c2": "Curse",
+    "alt": "Cellar",
+    "gain": 0.0006,
+    "se": 0.0004,
+    "n": 349,
+    "z": 1.5
+   },
+   {
+    "c2": "Curse",
+    "alt": "Chapel",
+    "gain": 0.0002,
+    "se": 0.0002,
+    "n": 418,
+    "z": 1.3
+   },
+   {
+    "c2": "Curse",
+    "alt": "Estate",
+    "gain": 0.0001,
+    "se": 0.0002,
+    "n": 640,
+    "z": 0.8
+   },
+   {
+    "c2": "Witch",
+    "alt": "Copper",
+    "gain": 0.0002,
+    "se": 0.0003,
+    "n": 338,
+    "z": 0.6
+   },
+   {
+    "c2": "PASS",
+    "alt": "Merchant",
+    "gain": 0.0006,
+    "se": 0.0011,
+    "n": 539,
+    "z": 0.5
+   },
+   {
+    "c2": "Copper",
+    "alt": "Harbinger",
+    "gain": 0.0001,
+    "se": 0.0003,
+    "n": 613,
+    "z": 0.3
+   },
+   {
+    "c2": "Library",
+    "alt": "Artisan",
+    "gain": 0.0016,
+    "se": 0.0059,
+    "n": 311,
+    "z": 0.3
+   },
+   {
+    "c2": "Harbinger",
+    "alt": "Poacher",
+    "gain": 0.001,
+    "se": 0.0049,
+    "n": 548,
+    "z": 0.2
+   },
+   {
+    "c2": "Silver",
+    "alt": "Market",
+    "gain": 0.0006,
+    "se": 0.0036,
+    "n": 395,
+    "z": 0.2
+   },
+   {
+    "c2": "Copper",
+    "alt": "Workshop",
+    "gain": 0.0,
+    "se": 0.0005,
+    "n": 467,
+    "z": 0.0
+   },
+   {
+    "c2": "Cellar",
+    "alt": "Merchant",
+    "gain": -0.0001,
+    "se": 0.0048,
+    "n": 456,
+    "z": -0.0
+   },
+   {
+    "c2": "Curse",
+    "alt": "Copper",
+    "gain": -0.0,
+    "se": 0.0003,
+    "n": 2526,
+    "z": -0.0
+   },
+   {
+    "c2": "Silver",
+    "alt": "Gold",
+    "gain": -0.0006,
+    "se": 0.0032,
+    "n": 489,
+    "z": -0.2
+   },
+   {
+    "c2": "Militia",
+    "alt": "Market",
+    "gain": -0.0012,
+    "se": 0.0053,
+    "n": 319,
+    "z": -0.2
+   }
+  ],
+  "worst_pairs": [
+   {
+    "c2": "Silver",
+    "alt": "Copper",
+    "gain": -0.0975,
+    "se": 0.0011,
+    "n": 17245,
+    "z": -89.6
+   },
+   {
+    "c2": "Silver",
+    "alt": "Estate",
+    "gain": -0.1504,
+    "se": 0.0015,
+    "n": 13627,
+    "z": -98.3
+   },
+   {
+    "c2": "Sentry",
+    "alt": "PASS",
+    "gain": -0.1637,
+    "se": 0.0017,
+    "n": 11183,
+    "z": -99.1
+   },
+   {
+    "c2": "PASS",
+    "alt": "Curse",
+    "gain": -0.0563,
+    "se": 0.0005,
+    "n": 59156,
+    "z": -108.0
+   },
+   {
+    "c2": "Silver",
+    "alt": "Curse",
+    "gain": -0.2009,
+    "se": 0.0018,
+    "n": 11689,
+    "z": -114.3
+   },
+   {
+    "c2": "Province",
+    "alt": "PASS",
+    "gain": -0.1465,
+    "se": 0.0009,
+    "n": 52413,
+    "z": -155.6
+   }
+  ],
+  "phase": [
+   {
+    "group": "turns 1-2",
+    "n": 30542,
+    "clear_override_share": 0.0421,
+    "mean_candidates": 6.95
+   },
+   {
+    "group": "turns 3-8",
+    "n": 99489,
+    "clear_override_share": 0.0447,
+    "mean_candidates": 6.45
+   },
+   {
+    "group": "turns 9-14",
+    "n": 161320,
+    "clear_override_share": 0.0394,
+    "mean_candidates": 6.27
+   },
+   {
+    "group": "turns 15+",
+    "n": 138741,
+    "clear_override_share": 0.0166,
+    "mean_candidates": 5.73
+   }
+  ],
+  "coins": [
+   {
+    "group": "$0",
+    "n": 40781,
+    "clear_override_share": 0.0095,
+    "mean_candidates": 2.84
+   },
+   {
+    "group": "$1",
+    "n": 28325,
+    "clear_override_share": 0.0097,
+    "mean_candidates": 2.83
+   },
+   {
+    "group": "$2",
+    "n": 34102,
+    "clear_override_share": 0.022,
+    "mean_candidates": 4.95
+   },
+   {
+    "group": "$3",
+    "n": 52133,
+    "clear_override_share": 0.035,
+    "mean_candidates": 7.16
+   },
+   {
+    "group": "$4",
+    "n": 59937,
+    "clear_override_share": 0.0474,
+    "mean_candidates": 7.02
+   },
+   {
+    "group": "$5",
+    "n": 46626,
+    "clear_override_share": 0.0412,
+    "mean_candidates": 7.0
+   },
+   {
+    "group": "$6",
+    "n": 36497,
+    "clear_override_share": 0.0376,
+    "mean_candidates": 6.99
+   },
+   {
+    "group": "$7",
+    "n": 26261,
+    "clear_override_share": 0.0414,
+    "mean_candidates": 6.99
+   },
+   {
+    "group": "$8",
+    "n": 22002,
+    "clear_override_share": 0.0344,
+    "mean_candidates": 7.0
+   },
+   {
+    "group": "$9+",
+    "n": 83428,
+    "clear_override_share": 0.038,
+    "mean_candidates": 7.0
+   }
+  ],
+  "multi_buy": [
+   {
+    "group": "1 buy",
+    "n": 270237,
+    "clear_override_share": 0.0319,
+    "mean_candidates": 6.13
+   },
+   {
+    "group": "2+ buys",
+    "n": 159855,
+    "clear_override_share": 0.036,
+    "mean_candidates": 6.29
+   }
+  ],
+  "pass": [
+   {
+    "group": "c2 passes",
+    "n": 71452,
+    "clear_override_share": 0.0142,
+    "mean_candidates": 3.43
+   },
+   {
+    "group": "c2 buys a card",
+    "n": 358640,
+    "clear_override_share": 0.0373,
+    "mean_candidates": 6.74
+   }
+  ],
+  "c2_buys": [
+   [
+    "PASS",
+    71452
+   ],
+   [
+    "Province",
+    52413
+   ],
+   [
+    "Silver",
+    23103
+   ],
+   [
+    "Duchy",
+    22058
+   ],
+   [
+    "Copper",
+    19198
+   ],
+   [
+    "Festival",
+    18173
+   ],
+   [
+    "Estate",
+    17930
+   ],
+   [
+    "Village",
+    17777
+   ],
+   [
+    "Vassal",
+    16378
+   ],
+   [
+    "Laboratory",
+    15900
+   ],
+   [
+    "Gardens",
+    15141
+   ],
+   [
+    "Gold",
+    15120
+   ],
+   [
+    "Market",
+    11925
+   ],
+   [
+    "Sentry",
+    11183
+   ]
+  ]
+ },
+ "action_teacher": {
+  "games": 16,
+  "score": null,
+  "ci95": null,
+  "act_graded": 848,
+  "act_overrides": 24,
+  "act_play_not_stop": 0,
+  "act_stop_not_play": 7,
+  "act_other_action": 17
+ }
+}

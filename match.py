@@ -26,6 +26,7 @@ def init(a):
     _A.update(a)
     st = np.load(a["student"]).astype(np.float32) if a["student"] else None
     core.configure(a["k0"], a["k1"], a["se"], a["topn"], a["margin"], st, a["z"])
+    core.lib.bv_set_act(a["act"])
 
 
 def job(g):
@@ -37,7 +38,15 @@ def job(g):
     before = core.stats()
     r = core.play([me, op] if s == 0 else [op, me], k, g["seed"], g["seed"] ^ 0x5EED)
     after = core.stats()
-    return {**g, "points": core.points(r, s), "secs": round(time.time() - t, 2), "capped": r["capped"],
+    import ctypes
+    acts = (ctypes.c_long * 5)()
+    core.lib.bv_act_stats(acts)
+    act = list(acts)
+    prev = _A.setdefault("_act", [0] * 5)
+    dact = [x - y for x, y in zip(act, prev)]
+    _A["_act"] = act
+    return {**g, "act_graded": dact[0], "act_overrides": dact[1], "act_play_not_stop": dact[2],
+            "act_stop_not_play": dact[3], "act_other_action": dact[4], "points": core.points(r, s), "secs": round(time.time() - t, 2), "capped": r["capped"],
             "error": r["error"], **{x: after[x] - before[x] for x in ("rollouts", "overrides", "buys")}}
 
 
@@ -81,6 +90,7 @@ def main():
     ap.add_argument("--margin", type=float, default=0.0)
     ap.add_argument("--student", default="")
     ap.add_argument("--z", type=float, default=0.0)
+    ap.add_argument("--act", type=int, default=0, help="1: also grade actions, 2: actions only")
     ap.add_argument("--resume", action="store_true", help="keep the games already in the .jsonl")
     ap.add_argument("--stream", default="gate")
     ap.add_argument("--kingdoms", type=int, default=200)

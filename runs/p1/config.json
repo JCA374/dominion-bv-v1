@@ -10,6 +10,7 @@
  "batch": 512,
  "lr": 0.001,
  "rank_w": 10.0,
+ "value_w": 0.1,
  "dev_kingdoms": 300,
  "margins": [
   0.02,

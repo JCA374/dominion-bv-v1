@@ -95,6 +95,8 @@ class Seat:
 
 lib.bv_set_z.argtypes = [ctypes.c_float]
 lib.bv_set_fast.argtypes = [ctypes.c_int]
+lib.bv_set_act.argtypes = [ctypes.c_int]
+lib.bv_act_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
 
 
 def configure(k0=16, k1=64, se_mult=1.5, topn=5, margin=0.0, student=None, z=0.0):

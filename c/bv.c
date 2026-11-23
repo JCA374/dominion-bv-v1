@@ -193,6 +193,7 @@ static int bv_fast_decide(void *ctx, const de_game *g, int kind, int me, int sub
     return a == RL_PASS ? -1 : a;
 }
 
+static int g_roll_kind = DE_BUY;    /* which decision the rollouts resume from: DE_BUY or DE_PLAY_ACTION */
 static float rollout(const de_game *g, int me, int cand, uint64_t seed) {
     static de_game c;
     c = *g;
@@ -202,7 +203,8 @@ static float rollout(const de_game *g, int me, int cand, uint64_t seed) {
     rs[0].rng = rs[1].rng = seed ^ 0x9E3779B97F4A7C15ULL;
     de_decide_fn fn = g_fast ? bv_fast_decide : rl_decide;
     de_agent ag[2] = {{fn, &rs[0]}, {fn, &rs[1]}};
-    de_resume_buy(&c, ag, cand == RL_PASS ? -1 : cand);
+    if (g_roll_kind == DE_PLAY_ACTION) de_resume_action(&c, ag, cand == RL_PASS ? -1 : cand, 1);
+    else de_resume_buy(&c, ag, cand == RL_PASS ? -1 : cand);
     g_rollouts++;
     if (c.capped) g_capped++;
     if (c.error) g_errors++;
@@ -288,10 +290,60 @@ static int bv_grade(const de_game *g, int me, const int *ok, const float *lg, in
     return K;
 }
 
+/* The action teacher (analysis): bv_set_act(0) off, 1 = also grade + play action decisions (DE_PLAY_ACTION: every
+ * legal action and PASS = end the action phase, each played to the end of the game, z-gated like buys), 2 = actions
+ * only (buys plain c2). Applies to seats with a bv mode. Counters: graded, overrides, overrides that play an action
+ * where c2 stopped, overrides that stop where c2 played, overrides that pick a different action. */
+static int g_act;
+static long g_act_stats[5];
+void bv_set_act(int a) { g_act = a; }
+void bv_act_stats(long *o) { memcpy(o, g_act_stats, sizeof g_act_stats); }
+
+static int bv_act_decide(rl_seat *s, const de_game *g, int me, int subject, const int *opts, int n, int may_pass) {
+    int ok[RL_NA] = {0}, cand[RL_NA], nc = 0;
+    for (int i = 0; i < n; i++) ok[opts[i]] = 1;
+    if (may_pass) ok[RL_PASS] = 1;
+    float x[RL_NF], lg[RL_NA];
+    rl_features(g, me, DE_PLAY_ACTION, subject, x);
+    rl_eval(s->prm, s->nh, s->nf, x, lg);
+    int inc = -1;
+    for (int a = 0; a < RL_NA; a++) if (ok[a]) { cand[nc++] = a; if (inc < 0 || lg[a] > lg[inc]) inc = a; }
+    double sum[RL_NA] = {0}, d[RL_NA] = {0}, d2[RL_NA] = {0};
+    int K = g_cfg.k0;
+    g_in_plan++;
+    g_roll_kind = DE_PLAY_ACTION;
+    for (int k = 0; k < K; k++) {
+        uint64_t seed = de_rng_next(&s->rng) | 1;
+        float v[RL_NA];
+        for (int i = 0; i < nc; i++) v[cand[i]] = rollout(g, me, cand[i], seed);
+        for (int i = 0; i < nc; i++) {
+            int a = cand[i];
+            double y = v[a] - v[inc];
+            sum[a] += v[a]; d[a] += y; d2[a] += y * y;
+        }
+    }
+    g_roll_kind = DE_BUY;
+    g_in_plan--;
+    int b = inc;
+    for (int i = 0; i < nc; i++) if (sum[cand[i]] > sum[b]) b = cand[i];
+    double m = d[b] / K, var = d2[b] / K - m * m, se = sqrt((var > 0 ? var : 0) / K);
+    g_act_stats[0]++;
+    int a = inc;
+    if (b != inc && m > g_cfg.margin && m > g_z * se) {
+        a = b;
+        g_act_stats[1]++;
+        g_act_stats[inc == RL_PASS ? 2 : b == RL_PASS ? 3 : 4]++;
+    }
+    return a == RL_PASS ? -1 : a;
+}
+
 static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
                      const int *opts, int n, int may_pass) {
     rl_seat *s = ctx;
     int mode = g_bv_mode[me & 1];
+    if (kind == DE_PLAY_ACTION && g_act && mode && !g_in_plan && s->mode == RL_NET && n + (may_pass != 0) >= 2)
+        return bv_act_decide(s, g, me, subject, opts, n, may_pass);
+    if (kind == DE_BUY && g_act == 2) mode = 0;
     if (g_in_plan || kind != DE_BUY || mode == 0 || s->mode != RL_NET || n + (may_pass != 0) < 2)
         return (g_fast == 2 && !g_in_plan ? bv_fast_decide : rl_decide)(ctx, g, kind, me, subject, opts, n, may_pass);
     int ok[RL_NA] = {0};
