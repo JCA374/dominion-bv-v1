@@ -1,0 +1,33 @@
+{
+ "name": "teacher_reserved_c2",
+ "args": {
+  "name": "teacher_reserved_c2",
+  "base": "c2",
+  "bv": 1,
+  "opp": "c2",
+  "k0": 32,
+  "k1": 32,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.02,
+  "student": "",
+  "z": 2.0,
+  "stream": "reserved",
+  "kingdoms": 200,
+  "workers": 2
+ },
+ "t": "2026-11-23 02:42",
+ "done": false,
+ "wall_secs": 1511,
+ "games": 50,
+ "score": 0.67,
+ "ci95": [
+  0.57,
+  0.78
+ ],
+ "override_rate": 0.0438,
+ "secs_per_game": 60.13,
+ "rollouts": 272704,
+ "capped": 0,
+ "errors": 0
+}
