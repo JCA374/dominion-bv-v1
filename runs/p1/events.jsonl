@@ -62,3 +62,4 @@
 {"t": "2026-11-23 09:28", "kind": "fit", "msg": "round 14: 212711 train states, dev regret 0.0527 (incumbent 0.0464), top-1 30%", "secs": 200}
 {"t": "2026-11-23 09:28", "kind": "dev", "msg": "round 14: student on c2 vs c2 m0.02: 46.8% (override 7%), m0.05: 50.3% (override 2%), m0.1: 49.8% (override 1%)"}
 {"t": "2026-11-23 09:28", "kind": "collect", "msg": "round 15: collecting 20000 states (DAgger: student plays)"}
+{"t": "2026-11-23 09:48", "kind": "labels", "msg": "round 15: 20137 states in 1195 s (16.9/s), 1992160 rollouts, capped 0.39%, errors 0"}
