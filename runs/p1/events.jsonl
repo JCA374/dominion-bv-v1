@@ -106,3 +106,4 @@
 {"t": "2026-11-23 20:03", "kind": "dev", "msg": "round 24: student on c2 vs c2 m0.02: 51.4% (override 2%), m0.05: 50.1% (override 0%), m0.1: 50.0% (override 0%)", "note": "round 24: student on c2 vs c2 m0.02: 51.4% (override 2%), m0.05: 50.1% (override 0%), m0.1: 50.0% (override 0%)"}
 {"t": "2026-11-23 20:03", "kind": "collect", "msg": "round 25: collecting 20000 states (DAgger: student plays)", "note": "round 25: collecting 20000 states (DAgger: student plays)"}
 {"t": "2026-11-23 20:12", "kind": "collect", "msg": "round 25: collecting 20000 states (c2 plays)", "note": "round 25: collecting 20000 states (c2 plays)"}
+{"t": "2026-11-23 20:55", "kind": "labels", "msg": "round 25: 20082 states in 2537 s (7.9/s), 1982784 rollouts, capped 0.19%, errors 0", "note": "round 25: 20082 states in 2537 s (7.9/s), 1982784 rollouts, capped 0.19%, errors 0"}
