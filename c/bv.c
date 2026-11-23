@@ -149,6 +149,8 @@ typedef struct {
     float *X, *Q, *SE;          /* features (RL_NF); per option mean score (NAN = not a candidate); SE of the
                                  * paired difference to the incumbent */
     int *INC, *CHOSE, *K, *SEAT, *TURN;
+    unsigned char *CAND;        /* explicit candidate mask (never infer it from NaN: -ffast-math may drop isnan) */
+    float *POL;                 /* c2's prior over the candidates, exactly as the live student reads it */
     int max, n;
 } bv_rec;
 static bv_rec *g_bvrec;
@@ -242,8 +244,10 @@ static void bv_pol(const float *lg, const int *cand, int nc, float *pol) {
 
 /* grade the candidates; q, se: per option (NAN if not a candidate); returns draws used */
 static int bv_grade(const de_game *g, int me, const int *ok, const float *lg, int inc, uint64_t *rng,
-                    float *q, float *se) {
+                    float *q, float *se, unsigned char *mask) {
     int cand[RL_NA], nc = bv_cands(ok, lg, inc, cand);
+    memset(mask, 0, RL_NA);
+    for (int i = 0; i < nc; i++) mask[cand[i]] = 1;
     double s[RL_NA] = {0}, d[RL_NA] = {0}, d2[RL_NA] = {0};
     int K = 0;
     g_in_plan++;
@@ -356,13 +360,17 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
     for (int a = 0; a < RL_NA; a++) if (ok[a] && (inc < 0 || lg[a] > lg[inc])) inc = a;
     int a = inc;
     g_buys++;
-    float q[RL_NA], se[RL_NA];
+    float q[RL_NA], se[RL_NA], pol[RL_NA] = {0};
+    unsigned char mask[RL_NA] = {0};
     int K = 0;
     if (mode == 1 || mode == 2 || mode == 4) {
-        K = bv_grade(g, me, ok, lg, inc, &s->rng, q, se);
+        K = bv_grade(g, me, ok, lg, inc, &s->rng, q, se, mask);
+        int cl[RL_NA], ncl = 0;
+        for (int c = 0; c < RL_NA; c++) if (mask[c]) cl[ncl++] = c;
+        bv_pol(lg, cl, ncl, pol);
         if (mode == 1) {
             int b = inc;
-            for (int c = 0; c < RL_NA; c++) if (!isnan(q[c]) && q[c] > q[b]) b = c;
+            for (int c = 0; c < RL_NA; c++) if (mask[c] && q[c] > q[b]) b = c;
             if (q[b] - q[inc] > g_cfg.margin && q[b] - q[inc] > g_z * se[b]) a = b;
         }
     }
@@ -382,6 +390,8 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
         memcpy(r->X + (size_t)k * RL_NF, x, sizeof x);
         memcpy(r->Q + (size_t)k * RL_NA, q, sizeof q);
         memcpy(r->SE + (size_t)k * RL_NA, se, sizeof se);
+        if (r->CAND) memcpy(r->CAND + (size_t)k * RL_NA, mask, RL_NA);
+        if (r->POL) memcpy(r->POL + (size_t)k * RL_NA, pol, sizeof pol);
         r->INC[k] = inc; r->CHOSE[k] = a; r->K[k] = K; r->SEAT[k] = me; r->TURN[k] = g->p[me].turns + 1;
     }
     if (!g_in_plan) {                                   /* clip trace, as rl_decide */
@@ -397,9 +407,9 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
 int bv_play(const int *mode, const float *prm0, const float *prm1, const int *nh, const int *nf,
             const int *genome0, const int *genome1, const int *bvmode,
             const int *kingdom, int kn, uint64_t seed, uint64_t rng_seed,
-            float *X, float *Q, float *SE, int *INC, int *CHOSE, int *K, int *SEAT, int *TURN, int max_rec,
-            int *out) {
-    bv_rec rec = {X, Q, SE, INC, CHOSE, K, SEAT, TURN, max_rec, 0};
+            float *X, float *Q, float *SE, int *INC, int *CHOSE, int *K, int *SEAT, int *TURN,
+            unsigned char *CAND, float *POL, int max_rec, int *out) {
+    bv_rec rec = {X, Q, SE, INC, CHOSE, K, SEAT, TURN, CAND, POL, max_rec, 0};
     g_bvrec = &rec;
     r_rec = NULL;
     const float *prm[2] = {prm0, prm1};
@@ -429,11 +439,11 @@ int bv_play(const int *mode, const float *prm0, const float *prm1, const int *nh
 }
 
 /* c2's candidate probabilities for a recorded state (training): lg from its features, candidates = the graded ones */
-void bv_pol_of(const float *prm, int nh, int nf, const float *x, const float *q, float *pol) {
+void bv_pol_of(const float *prm, int nh, int nf, const float *x, const unsigned char *mask, float *pol) {
     float lg[RL_NA];
     rl_eval(prm, nh, nf, x, lg);
     int cand[RL_NA], nc = 0;
-    for (int a = 0; a < RL_NA; a++) if (!isnan(q[a])) cand[nc++] = a;
+    for (int a = 0; a < RL_NA; a++) if (mask[a]) cand[nc++] = a;
     bv_pol(lg, cand, nc, pol);
 }
 

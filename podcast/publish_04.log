@@ -1,0 +1,12 @@
+[19:48:19] prep + narrate (Kokoro)
+[19:52:14] listen-check (Whisper)
+[19:54:05] pipeline stages PASS: 5/5
+[19:54:05] episode-04.mp3: 265 s
+4 episode(s)
+[19:54:05] tests
+3 passed in 4.76s
+[19:54:14] waiting for GitHub Pages (9057e26037673d2ac8d12785a9730ca691a99186)
+[19:55:01]   200 https://jca374.github.io/dominion-bv-v1/podcast/index.html
+[19:55:01]   200 https://jca374.github.io/dominion-bv-v1/podcast/episode-04.mp3
+[19:55:02]   200 https://jca374.github.io/dominion-bv-v1/data/podcast.json
+DEPLOYED https://jca374.github.io/dominion-bv-v1/podcast/index.html (episode 04: The other half of the turn, 265 s)

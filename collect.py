@@ -51,7 +51,7 @@ def worker(a, wid, quota, q):
         rec = r["rec"]
         m = len(rec["K"])
         if m:
-            buf.append({**{x: rec[x] for x in ("X", "Q", "SE", "INC", "CHOSE", "K", "TURN")},
+            buf.append({**{x: rec[x] for x in ("X", "Q", "SE", "INC", "CHOSE", "K", "TURN", "CAND", "POL")},
                         "OPP": np.full(m, OPPS.index(opp), np.int8), "SPLIT": np.full(m, sp, np.int8),
                         "KH": np.full(m, kh, np.int64), "SLICE": np.full(m, list(SLICES).index(sl), np.int8),
                         "RESULT": np.full(m, core.points(r, s), np.float32)})

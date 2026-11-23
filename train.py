@@ -66,7 +66,9 @@ class Run:
 
 
 def load(run):
-    """All shards in one preallocated array per field (no second copy)."""
+    """All shards in one preallocated array per field (no second copy). CAND (the explicit candidate mask) comes from
+    the shard when it has one, else from numpy's isnan(Q) (old shards; numpy keeps NaN checks). POL is recomputed by
+    policy_prior from the mask (tests/test_prior.py: identical to the live prior)."""
     fs = sorted(glob.glob(os.path.join(ROOT, "data", run, "*.npz")))
     if not fs:
         return None
@@ -74,13 +76,16 @@ def load(run):
     for f in fs:
         with np.load(f) as z:
             sizes.append(len(z["K"]))
+    keys = ["X", "Q", "SE", "INC", "CHOSE", "K", "TURN", "OPP", "SPLIT", "KH", "SLICE", "RESULT"]
     with np.load(fs[0]) as z:
-        out = {k: np.empty((sum(sizes),) + z[k].shape[1:], z[k].dtype) for k in z.files}
+        out = {k: np.empty((sum(sizes),) + z[k].shape[1:], z[k].dtype) for k in keys}
+        out["CAND"] = np.empty((sum(sizes), z["Q"].shape[1]), np.uint8)
     o = 0
     for f, n in zip(fs, sizes):
         with np.load(f) as z:
-            for k in z.files:
+            for k in keys:
                 out[k][o:o + n] = z[k]
+            out["CAND"][o:o + n] = z["CAND"] if "CAND" in z.files else ~np.isnan(z["Q"])
         o += n
     return out
 
@@ -96,9 +101,10 @@ def fit(D, init=None, log=print):
     tr, dv = np.where(D["SPLIT"] == 2)[0], np.where(D["SPLIT"] == 0)[0]
     from bv.core import policy_prior
     X = torch.from_numpy(D["X"])                     # shares memory with the numpy array
-    POL = torch.from_numpy(policy_prior(D["X"], D["Q"]))
+    mask = D["CAND"].astype(bool) if "CAND" in D else ~np.isnan(D["Q"])     # explicit mask; numpy isnan for old shards
+    POL = torch.from_numpy(policy_prior(D["X"], mask))
     Q = torch.from_numpy(np.nan_to_num(D["Q"], nan=0.0))
-    M = torch.from_numpy(~np.isnan(D["Q"]))
+    M = torch.from_numpy(mask)
     SE = torch.from_numpy(np.nan_to_num(D["SE"], nan=1.0))
     INC = torch.from_numpy(D["INC"].astype(np.int64))
     opt = torch.optim.Adam(m.parameters(), lr=CFG["lr"])

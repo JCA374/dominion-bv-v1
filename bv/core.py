@@ -29,7 +29,7 @@ DEPS = SRC + [os.path.join(ROOT, "c", "fastnet.h"), os.path.join(RL3, "c", "rl.c
 def build() -> str:
     if not os.path.exists(SO) or max(os.path.getmtime(d) for d in DEPS) > os.path.getmtime(SO):
         tmp = f"{SO}.{os.getpid()}"
-        subprocess.check_call(["gcc", "-O3", "-march=native", "-ffast-math", "-shared", "-fPIC", "-Wall", "-Wextra",
+        subprocess.check_call(["gcc", "-O3", "-march=native", "-ffast-math", "-fno-finite-math-only", "-shared", "-fPIC", "-Wall", "-Wextra",
                                "-Wno-unused-parameter", "-Wno-unused-function", "-I", ENGINE_C, "-o", tmp, *SRC, "-lm"])
         os.replace(tmp, SO)
     return SO
@@ -46,11 +46,12 @@ lib.bv_set_cfg.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_float, ctypes.c_
 lib.bv_set_student.argtypes = [_F]
 lib.bv_student.argtypes = [_F, _F, _F, _F]
 lib.bv_tokens.argtypes = [_F, _F, _F, _F]
-lib.bv_pol_of.argtypes = [_F, ctypes.c_int, ctypes.c_int, _F, _F, _F]
+_U8 = ctypes.POINTER(ctypes.c_ubyte)
+lib.bv_pol_of.argtypes = [_F, ctypes.c_int, ctypes.c_int, _F, _U8, _F]
 lib.bv_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
 lib.bv_play.restype = ctypes.c_int
 lib.bv_play.argtypes = [_I, _F, _F, _I, _I, _I, _I, _I, _I, ctypes.c_int, ctypes.c_uint64, ctypes.c_uint64,
-                        _F, _F, _F, _I, _I, _I, _I, _I, ctypes.c_int, _I]
+                        _F, _F, _F, _I, _I, _I, _I, _I, ctypes.POINTER(ctypes.c_ubyte), _F, ctypes.c_int, _I]
 lib.rl_num_params.argtypes = [ctypes.c_int, ctypes.c_int]
 GA, NET = 0, 2
 MAX_REC = 200
@@ -118,18 +119,22 @@ def play(seats, kingdom, seed, rng_seed=1):
     Q = np.zeros((MAX_REC, NA), np.float32)
     SE = np.zeros((MAX_REC, NA), np.float32)
     INC, CH, K, SEAT, TURN = (np.zeros(MAX_REC, np.int32) for _ in range(5))
+    CAND = np.zeros((MAX_REC, NA), np.uint8)
+    POL = np.zeros((MAX_REC, NA), np.float32)
     shapes = [net_shape(s.prm) if s.mode == NET else (256, NF) for s in seats]
     out = (ctypes.c_int * 6)()
     pi = lambda a: a.ctypes.data_as(_I)  # noqa: E731
     n = lib.bv_play(_ints([s.mode for s in seats]), _f(seats[0].prm), _f(seats[1].prm),
                     _ints([a for a, _ in shapes]), _ints([b for _, b in shapes]), seats[0].genome, seats[1].genome,
                     _ints([s.bv for s in seats]), k, len(kingdom), seed & (2**64 - 1), rng_seed & (2**64 - 1),
-                    _f(X), _f(Q), _f(SE), pi(INC), pi(CH), pi(K), pi(SEAT), pi(TURN), MAX_REC, out)
+                    _f(X), _f(Q), _f(SE), pi(INC), pi(CH), pi(K), pi(SEAT), pi(TURN),
+                    CAND.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), _f(POL), MAX_REC, out)
     m = out[0]
     return {"winners": [i for i in range(2) if m >> i & 1], "scores": [out[1], out[2]], "turns": [out[3], out[4]],
             "capped": bool(out[5] & 1), "error": bool(out[5] & 2),
             "rec": {"X": X[:n], "Q": Q[:n], "SE": SE[:n], "INC": INC[:n], "CHOSE": CH[:n], "K": K[:n],
-                    "SEAT": SEAT[:n], "TURN": TURN[:n]}}
+                    "SEAT": SEAT[:n], "TURN": TURN[:n],
+                    "CAND": CAND[:n], "POL": POL[:n]}}
 
 
 def points(r, seat):
@@ -148,13 +153,15 @@ def seat_for(spec, kingdom, bv=0):
     return Seat(NET, None, params(name), bv)     # a net seat never reads the genome
 
 
-def policy_prior(X, Q, net="rl3_c2_2654.npy"):
-    """c2's probabilities over each recorded state's graded candidates (the student's prior input)."""
+def policy_prior(X, mask, net="rl3_c2_2654.npy"):
+    """c2's probabilities over each recorded state's graded candidates (the student's prior input). mask: the explicit
+    candidate mask [n, NA] (for old shards without one: ~np.isnan(Q), computed in numpy, which keeps NaN checks)."""
     p = params(net)
     nh, nf = net_shape(p)
     P = np.zeros((len(X), NA), np.float32)
     X = np.ascontiguousarray(X, np.float32)
-    Q = np.ascontiguousarray(Q, np.float32)
+    M = np.ascontiguousarray(mask, np.uint8)
+    U8 = ctypes.POINTER(ctypes.c_ubyte)
     for i in range(len(X)):
-        lib.bv_pol_of(_f(p), nh, nf, _f(X[i]), _f(Q[i]), _f(P[i]))
+        lib.bv_pol_of(_f(p), nh, nf, _f(X[i]), M[i].ctypes.data_as(U8), _f(P[i]))
     return P
