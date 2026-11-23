@@ -1,0 +1,14 @@
+title: 'Episode 04: The other half of the turn'
+kind: prose
+author: ''
+narrator: Kokoro TTS (af_heart)
+narration:
+  narrator: af_heart
+  speed: 0.95
+  paragraph_pause: 0.6
+chapters:
+  ch01: 'Episode 04: The other half of the turn'
+sources:
+  ch01:
+    path: /home/jonas/code/games/dominion/trainers/bv-v1/podcast/episode-04.md
+    sha1: 572fc02eebdd7333e7ca776c26dfa560bc98392d
