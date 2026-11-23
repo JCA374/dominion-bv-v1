@@ -22,7 +22,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
-CFG = {"pilot_states": 2000, "round_states": 20000, "workers": 5, "k0": 16, "k1": 16, "se": 1.5, "topn": 5,
+CFG = {"pilot_states": 2000, "round_states": 20000, "workers": 7, "k0": 16, "k1": 16, "se": 1.5, "topn": 5,
        "epochs": 6, "batch": 512, "lr": 1e-3, "rank_w": 10.0, "dev_kingdoms": 300, "margins": [0.02, 0.05, 0.1],
        "dagger_after": 0.505, "promote_at": 0.53, "reserved_kingdoms": 2000, "max_rounds": 200}
 STAGES = [

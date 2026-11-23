@@ -1,0 +1,29 @@
+# Episode 03: Making the teacher twice as fast
+
+This episode is for engineers who are learning machine learning. You asked whether we could speed up training with Rust, or with something else that is fast. We did get it twice as fast. But the interesting part is how we found out where the time went, and why the obvious answer was the wrong one.
+
+First, a quick reminder of what is slow. The teacher grades every buy by playing the game to the end. It tries about six buys, and each buy gets sixteen to thirty two replays. That is a couple of hundred whole games, just to label one decision. And in every one of those games, our best network makes every single move.
+
+Rule one of speeding things up is this. Measure before you change anything. The engine was already written in C, so you might guess the game rules are the slow part. They are not. I built a small stand alone program that plays a few teacher games, and ran it under a profiler. A profiler samples where the program is, many times a second, and adds it up per function. The answer was clear. Eighty three percent of the time went into one small function. It multiplies the network's weights by its inputs. The game rules took less than three percent.
+
+That three percent matters. It is the floor. Even if the network cost nothing at all, the rules would still take three percent of the old time. So the best you could ever hope for is about thirty times faster. Engineers call this Amdahl's law. A speed up is limited by the part you do not touch.
+
+So the job was the network. It is small. Four hundred and thirteen numbers go in. They pass through two layers of two hundred and fifty six units, and thirty four scores come out, one per possible choice. That is about one hundred and eighty thousand multiply and add steps per move. And it runs one position at a time. In machine learning terms, that is batch size one.
+
+Here is the first lesson for anyone coming from deep learning. Most of the inputs are zero. When I counted them on real recorded positions, only about one hundred and twenty four of the four hundred and thirteen were not zero. Most cards are not in this kingdom. Most zones are empty. And after the first layer, about half the hidden units are zero too. The activation function sets every negative number to zero. Multiplying by zero is wasted work.
+
+So I rewrote the multiply. First, I flipped the weight table, so that each input owns one long row of weights. Then, for each input that is not zero, the code adds that whole row into the hidden layer. The processor can do that eight numbers at a time. Zero inputs are skipped completely. The same trick works for the second layer. And during a replay, we only need the scores of the moves that are legal right now. We never need the value estimate at all. So those get skipped too.
+
+Then came the bake off you asked for. I wrote the same new method in C and in Rust. Then I timed both against the old code, on the same four hundred recorded positions. The old code took about fifty five microseconds per move. The new C code took about nineteen. That is almost three times faster. Rust took about thirty five, so it was only one and a half times faster.
+
+Why did Rust lose? It is not a slow language. The difference is a promise about arithmetic. With floating point numbers, the order of additions changes the last few bits of the answer. The C code here is compiled with a flag that says, you may reorder my sums. That lets the compiler split one long sum into eight sums that run side by side. Rust never reorders sums unless you write the code to do it. Same algorithm, different rules about rounding. So the language matters much less than the algorithm and the compiler flags.
+
+Rule two. Prove that the fast version is the same game. Changing the order of additions changes the scores in about the fifth decimal place. That could flip a near tie, and then a game would go differently. So I played one thousand games both ways, old code and new code, with the same seeds. All one thousand came out identical: the same winner, the same score, the same number of turns. The labels in the benchmark games matched exactly too.
+
+Rule three. Measure end to end, not one part. The network got almost three times faster. But the whole program only got two point two times faster, because the parts that did not change now take a bigger share. Replays went from sixty two per second to one hundred and thirty seven, in one process. Graded buys went from about five per second to almost eleven.
+
+There was a second, quieter win, in memory. The label workers were copies of the training process. Each one carried almost a gigabyte, including the whole data set and the deep learning library. On a laptop with seven gigabytes, that is how training gets killed. Now each worker starts fresh, and all five together use about three hundred and fifty megabytes.
+
+And what about a graphics card? This laptop does not have a usable one. But even with one, it would not help much. A graphics card is fast when you give it thousands of positions at once. Here every move depends on the move before it, one position at a time. That work is serial. More processor cores would help almost directly. A bigger graphics card would mostly wait.
+
+What is next? The profile now says the network is two thirds of the time, and building its inputs is more than a quarter. The weights are also slightly too big for the processor's fastest cache, so the network is now limited by memory, not by arithmetic. Those are the next targets. Meanwhile, the teacher result is confirmed on kingdoms it had never seen. It won fifty five percent against the newest version of our best model, over four hundred games. Against the older version it is near fifty nine percent so far. And the small fast network now gets twice as many lessons per hour.

@@ -1,0 +1,14 @@
+title: 'Episode 03: Making the teacher twice as fast'
+kind: prose
+author: ''
+narrator: Kokoro TTS (af_heart)
+narration:
+  narrator: af_heart
+  speed: 0.95
+  paragraph_pause: 0.6
+chapters:
+  ch01: 'Episode 03: Making the teacher twice as fast'
+sources:
+  ch01:
+    path: /home/jonas/code/games/dominion/trainers/bv-v1/podcast/episode-03.md
+    sha1: a15835bb5f5d59aa4887675d4d2a97d837d4640d
