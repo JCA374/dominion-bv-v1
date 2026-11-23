@@ -1,0 +1,116 @@
+{
+ "name": "suite_action",
+ "args": {
+  "name": "suite_action",
+  "base": "c2",
+  "bv": 1,
+  "opp": "c2",
+  "k0": 32,
+  "k1": 32,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.02,
+  "student": "",
+  "z": 2.0,
+  "act": 2,
+  "resume": false,
+  "stream": "suite",
+  "kingdoms": 150,
+  "workers": 3
+ },
+ "manifest": {
+  "name": "suite_action",
+  "base": "c2",
+  "bv": 1,
+  "opp": "c2",
+  "k0": 32,
+  "k1": 32,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.02,
+  "student": "",
+  "z": 2.0,
+  "act": 2,
+  "stream": "suite",
+  "kingdoms": 150,
+  "models": {
+   "rl3_c2_2654.npy": "0018fb85b6cc87ec",
+   "rl3_c1_2300.npy": "daae8a0049b13346",
+   "rl1_r2_2200.npy": "47ed00b6f7cfa628"
+  },
+  "student_sha": null
+ },
+ "t": "2026-11-23 21:22",
+ "done": false,
+ "wall_secs": 1143,
+ "latency_s": {
+  "decisions": 5220,
+  "p50": 0.5264,
+  "p95": 1.6642
+ },
+ "action_overrides": {
+  "n": 106,
+  "mean_gain": 0.2298,
+  "top_changes": [
+   [
+    "Militia -> end actions",
+    6
+   ],
+   [
+    "Festival -> end actions",
+    5
+   ],
+   [
+    "Village -> end actions",
+    3
+   ],
+   [
+    "Chapel -> end actions",
+    3
+   ],
+   [
+    "Laboratory -> Poacher",
+    3
+   ],
+   [
+    "Village -> Artisan",
+    3
+   ],
+   [
+    "Sentry -> Merchant",
+    3
+   ],
+   [
+    "Festival -> Library",
+    2
+   ],
+   [
+    "Village -> Militia",
+    2
+   ],
+   [
+    "Throne Room -> Market",
+    2
+   ],
+   [
+    "Sentry -> Militia",
+    2
+   ],
+   [
+    "Bandit -> end actions",
+    2
+   ]
+  ]
+ },
+ "games": 100,
+ "score": 0.585,
+ "ci95": [
+  0.5,
+  0.652
+ ],
+ "override_rate": 0.0,
+ "secs_per_game": 33.84,
+ "rollouts": 527616,
+ "capped": 0,
+ "errors": 0
+}
