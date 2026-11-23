@@ -12,22 +12,23 @@
   "margin": 0.02,
   "student": "",
   "z": 2.0,
+  "resume": true,
   "stream": "reserved",
   "kingdoms": 200,
   "workers": 2
  },
- "t": "2026-11-23 07:18",
+ "t": "2026-11-23 07:30",
  "done": false,
- "wall_secs": 7263,
- "games": 250,
- "score": 0.594,
+ "wall_secs": 642,
+ "games": 300,
+ "score": 0.5817,
  "ci95": [
-  0.54,
-  0.646
+  0.5333,
+  0.63
  ],
- "override_rate": 0.0408,
- "secs_per_game": 58.04,
- "rollouts": 1340192,
+ "override_rate": 0.041,
+ "secs_per_game": 52.62,
+ "rollouts": 1612928,
  "capped": 0,
  "errors": 0
 }
