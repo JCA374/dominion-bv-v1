@@ -1,0 +1,33 @@
+{
+ "name": "p1_r5_dev_m0.02",
+ "args": {
+  "name": "p1_r5_dev_m0.02",
+  "base": "c2",
+  "bv": 3,
+  "opp": "c2",
+  "k0": 16,
+  "k1": 64,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.02,
+  "student": "/home/jonas/code/games/dominion/trainers/bv-v1/runs/p1/student_5.npy",
+  "z": 0.0,
+  "stream": "dev",
+  "kingdoms": 300,
+  "workers": 5
+ },
+ "t": "2026-11-23 02:16",
+ "done": true,
+ "wall_secs": 3,
+ "games": 600,
+ "score": 0.4958,
+ "ci95": [
+  0.47,
+  0.5209
+ ],
+ "override_rate": 0.0296,
+ "secs_per_game": 0.02,
+ "rollouts": 0,
+ "capped": 0,
+ "errors": 0
+}
