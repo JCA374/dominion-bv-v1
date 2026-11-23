@@ -39,3 +39,7 @@
 {"t": "2026-11-23 06:06", "kind": "fit", "msg": "round 9: 114489 train states, dev regret 0.0555 (incumbent 0.0468), top-1 29%", "secs": 137}
 {"t": "2026-11-23 06:07", "kind": "dev", "msg": "round 9: student on c2 vs c2 m0.02: 50.0% (override 4%), m0.05: 49.3% (override 1%), m0.1: 50.3% (override 0%)"}
 {"t": "2026-11-23 06:07", "kind": "collect", "msg": "round 10: collecting 20000 states (DAgger: student plays)"}
+{"t": "2026-11-23 07:03", "kind": "labels", "msg": "round 10: 20068 states in 3409 s (5.9/s), 1985472 rollouts, capped 0.13%, errors 0"}
+{"t": "2026-11-23 07:06", "kind": "fit", "msg": "round 10: 130563 train states, dev regret 0.0555 (incumbent 0.0474), top-1 30%", "secs": 155}
+{"t": "2026-11-23 07:06", "kind": "dev", "msg": "round 10: student on c2 vs c2 m0.02: 50.6% (override 4%), m0.05: 49.8% (override 1%), m0.1: 50.0% (override 0%)"}
+{"t": "2026-11-23 07:06", "kind": "collect", "msg": "round 11: collecting 20000 states (DAgger: student plays)"}
