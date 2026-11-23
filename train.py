@@ -22,18 +22,18 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
-CFG = {"pilot_states": 2000, "round_states": 20000, "workers": 7, "k0": 16, "k1": 16, "se": 1.5, "topn": 5,
+CFG = {"pilot_states": 2000, "round_states": 20000, "workers": 4, "k0": 16, "k1": 16, "se": 1.5, "topn": 5,
        "epochs": 6, "batch": 512, "lr": 1e-3, "rank_w": 10.0, "value_w": 0.1, "dev_kingdoms": 300, "margins": [0.02, 0.05, 0.1],
-       "dagger_after": 0.505, "promote_at": 0.53, "reserved_kingdoms": 2000, "max_rounds": 200}
+       "dagger_after": 0.505, "promote_at": 0.53, "confirm_kingdoms": 2000, "ga_tolerance": 0.01, "max_rounds": 200}
 STAGES = [
     {"id": 1, "name": "Labels", "what": "c2 plays every buy; the teacher grades it with paired rollouts to the end",
-     "gate": "pilot: cap/error rate < 1%, labels reproducible"},
+     "gate": "pilot (in code): capped and rejected rollouts < 1%, the test suite (reproducible + replayable labels) passes"},
     {"id": 2, "name": "Student fit", "what": "fit the Deep Sets student on all labels; dev match student-on-c2 vs c2",
-     "gate": f"dev score >= {CFG['dagger_after']:.1%} at the best margin"},
+     "gate": f"dev score >= {CFG['dagger_after']:.1%} at the best margin, confirmed on an independent dev stream"},
     {"id": 3, "name": "DAgger", "what": "the student plays its buys, the teacher grades them (positions the student reaches)",
      "gate": f"dev score >= {CFG['promote_at']:.0%}"},
-    {"id": 4, "name": "Promotion", "what": "2,000 reserved kingdoms, both seats, vs c1 2300 and c2 2654",
-     "gate": ">= 53% vs both, kingdom-block 95% interval above 50%"},
+    {"id": 4, "name": "Promotion", "what": "2,000 fresh confirmation kingdoms, both seats, vs c1 2300, c2 2654 and the GA base",
+     "gate": ">= 53% vs both RL-v3, kingdom-block 95% interval above 50%, GA base no more than 1 point below plain c2's"},
 ]
 
 
@@ -98,7 +98,11 @@ def fit(D, init=None, log=print):
     m = Student()
     if init is not None:
         m.load_state_dict(init)
-    tr, dv = np.where(D["SPLIT"] == 2)[0], np.where(D["SPLIT"] == 0)[0]
+    from collect import split_of
+    from match import eval_kingdoms
+    bad = np.isin(D["KH"], [split_of(k.split(","))[0] for k in eval_kingdoms()])   # never train on evaluation kingdoms
+    tr, dv = np.where((D["SPLIT"] == 2) & ~bad)[0], np.where((D["SPLIT"] == 0) & ~bad)[0]
+    log(f"  dropped {int(bad.sum())} positions from evaluation kingdoms")
     from bv.core import policy_prior
     X = torch.from_numpy(D["X"])                     # shares memory with the numpy array
     mask = D["CAND"].astype(bool) if "CAND" in D else ~np.isnan(D["Q"])     # explicit mask; numpy isnan for old shards
@@ -149,9 +153,37 @@ def fit(D, init=None, log=print):
     reg = float(np.mean(best - q[np.arange(len(dv)), pick]))
     reg_inc = float(np.mean(best - q[np.arange(len(dv)), D["INC"][dv]]))
     agree = float(np.mean(pick == np.nanargmax(q, 1)))
-    return m, export(m), {"dev_loss": round(float(l_), 4), "dev_regret": round(reg, 4),
-                          "dev_regret_incumbent": round(reg_inc, 4), "dev_top1": round(agree, 3),
-                          "train_states": int(len(tr)), "dev_states": int(len(dv))}
+    ev = {"dev_loss": round(float(l_), 4), "dev_regret": round(reg, 4), "dev_regret_incumbent": round(reg_inc, 4),
+          "dev_top1": round(agree, 3), "train_states": int(len(tr)), "dev_states": int(len(dv))}
+    ev.update(bank_eval(m))
+    return m, export(m), ev
+
+
+def bank_eval(m, model_fn=None):
+    """Regret on the frozen validation bank (independent 128-draw grades over all legal buys): the student ranks its own
+    shortlist (the bank row's 16-draw candidates), as in play. Empty if there is no bank yet."""
+    p = os.path.join(ROOT, "data", "bank", "bank.npz")
+    if not os.path.exists(p):
+        return {}
+    import torch
+    B = dict(np.load(p))
+    from bv.core import policy_prior
+    short = B["CAND16"].astype(bool)
+    pol = policy_prior(B["X"], short)
+    with torch.no_grad():
+        z = (model_fn or m)(torch.from_numpy(B["X"]), torch.from_numpy(pol)).numpy()
+    z[~short] = -1e9
+    q = B["Q"]
+    n = len(q)
+    best = np.nanmax(q, 1)
+    pick = z.argmax(1)
+    inc = B["INC"]
+    gain = q[np.arange(n), pick] - q[np.arange(n), inc]
+    ov = pick != inc
+    return {"bank_regret": round(float(np.mean(best - q[np.arange(n), pick])), 4),
+            "bank_regret_incumbent": round(float(np.mean(best - q[np.arange(n), inc])), 4),
+            "bank_harmful_override": round(float(np.mean(ov & (gain < -0.01))), 4),
+            "bank_good_override": round(float(np.mean(ov & (gain > 0.01))), 4)}
 
 
 def match(name, student, margin, stream, kingdoms, opp="c2", bv=3):
@@ -193,7 +225,7 @@ def main():
         dag = R.s["stage"] >= 3
         stud = os.path.join(R.d, "student.npy") if dag else ""
         R.event("collect", f"round {rnd}: collecting {n} states ({'DAgger: student plays' if dag else 'c2 plays'})")
-        st = collect({"run": a.run, "states": n, "workers": CFG["workers"], "k0": CFG["k0"], "k1": CFG["k1"],
+        st = collect({"run": a.run, "round": rnd, "states": n, "workers": CFG["workers"], "k0": CFG["k0"], "k1": CFG["k1"],
                       "se": CFG["se"], "topn": CFG["topn"], "margin": R.s.get("margin", 0.0), "student": stud,
                       "dagger": dag})
         R.s["states"] += st["states"]
@@ -224,24 +256,41 @@ def main():
         R.row(row)
         R.save(round=rnd, margin=bm, last_dev=b["score"], last_ci=b["ci95"],
                best_dev=max(R.s["best_dev"] or 0, b["score"]))
-        if R.s["stage"] == 1:
-            R.save(stage=2)
-            R.event("stage", "stage 2: student fit")
+        if R.s["stage"] == 1:                           # pilot gate: rates and reproducibility, in code
+            rej = st.get("rejected", 0) / max(st["states"], 1)
+            rep = subprocess.run([PY, "-m", "pytest", "-q", "tests"], cwd=ROOT, capture_output=True).returncode == 0
+            if cap < 0.01 and rej < 0.01 and rep:
+                R.save(stage=2)
+                R.event("stage", f"stage 2: student fit (pilot: capped {cap:.2%}, rejected {rej:.2%}, tests passed)")
+            else:
+                R.event("stage", f"pilot gate failed: capped {cap:.2%}, rejected {rej:.2%}, tests {'ok' if rep else 'FAILED'}")
+                raise SystemExit("pilot gate failed")
         if R.s["stage"] == 2 and b["score"] >= CFG["dagger_after"]:
-            R.save(stage=3)
-            R.event("stage", f"stage 3: DAgger (dev {100 * b['score']:.1f}% at margin {bm})")
+            c = match(f"{a.run}_r{rnd}_dev2_m{bm}", sp, bm, "dev2", CFG["dev_kingdoms"])   # independent check
+            R.event("dev2", f"round {rnd}: independent dev check at margin {bm}: {100 * c['score']:.1f}% {c['ci95']}")
+            if c["score"] >= CFG["dagger_after"]:
+                R.save(stage=3)
+                R.event("stage", f"stage 3: DAgger (dev {100 * b['score']:.1f}%, dev2 {100 * c['score']:.1f}% at margin {bm})")
         if R.s["stage"] >= 3 and b["score"] >= CFG["promote_at"] and not R.s.get("promotion_tried_round") == rnd:
-            R.event("promotion", f"round {rnd}: promotion match on {CFG['reserved_kingdoms']} reserved kingdoms")
-            res = {o: match(f"{a.run}_r{rnd}_promo_{o}", sp, bm, "reserved", CFG["reserved_kingdoms"], opp=o)
-                   for o in ("c2", "c1")}
-            ok = all(v["score"] >= 0.53 and v["ci95"][0] > 0.5 for v in res.values())
-            R.save(promotion_tried_round=rnd, promotion={o: {"score": v["score"], "ci95": v["ci95"]} for o, v in res.items()})
+            c = match(f"{a.run}_r{rnd}_dev2p_m{bm}", sp, bm, "dev2", CFG["dev_kingdoms"])
+            if c["score"] < CFG["promote_at"] - 0.01:
+                R.event("promotion", f"round {rnd}: dev2 {100 * c['score']:.1f}% does not confirm dev; no promotion match")
+                continue
+            n = CFG["confirm_kingdoms"]
+            R.event("promotion", f"round {rnd}: promotion match on {n} fresh confirmation kingdoms (vs c2, c1, GA base)")
+            res = {o: match(f"{a.run}_r{rnd}_promo_{o}", sp, bm, "confirm", n, opp=o) for o in ("c2", "c1", "ga2")}
+            base = match(f"c2_vs_ga2_confirm_{n}", "", 0.0, "confirm", n, opp="ga2", bv=0)   # plain c2 vs GA base
+            ga_ok = res["ga2"]["score"] >= base["score"] - CFG["ga_tolerance"]
+            ok = ga_ok and all(res[o]["score"] >= 0.53 and res[o]["ci95"][0] > 0.5 for o in ("c2", "c1"))
+            R.save(promotion_tried_round=rnd, promotion={o: {"score": v["score"], "ci95": v["ci95"],
+                                                             "latency": v.get("latency_s")} for o, v in res.items()})
             R.event("promotion", f"round {rnd}: vs c2 {100 * res['c2']['score']:.1f}% {res['c2']['ci95']}, vs c1 "
-                    f"{100 * res['c1']['score']:.1f}% {res['c1']['ci95']} -> {'PROMOTED' if ok else 'not yet'}")
+                    f"{100 * res['c1']['score']:.1f}% {res['c1']['ci95']}, vs GA base {100 * res['ga2']['score']:.1f}% "
+                    f"(plain c2 {100 * base['score']:.1f}%), latency {res['c2'].get('latency_s')} -> "
+                    f"{'PROMOTED' if ok else 'not yet'}")
             if ok:
                 R.save(stage=4, promoted_round=rnd)
                 np.save(os.path.join(R.d, "promoted.npy"), flat)
-
 
 if __name__ == "__main__":
     main()

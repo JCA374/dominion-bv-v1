@@ -8,6 +8,7 @@
  */
 #include "../rl-v3/c/rl.c"
 #include "fastnet.h"
+#include <time.h>
 
 /* ── the student (Deep Sets over card tokens), forward pass; see bv/student.py for the layout ── */
 #define BV_TOK 17           /* per-card token features (bv_tokens) */
@@ -151,8 +152,30 @@ typedef struct {
     int *INC, *CHOSE, *K, *SEAT, *TURN;
     unsigned char *CAND;        /* explicit candidate mask (never infer it from NaN: -ffast-math may drop isnan) */
     float *POL;                 /* c2's prior over the candidates, exactly as the live student reads it */
+    int *DIDX;                  /* replay key: index of this graded decision in its game (bv_set_regrade) */
+    unsigned char *CAPS;        /* per option: rollouts that hit the round cap */
     int max, n;
 } bv_rec;
+
+/* Regrade one recorded decision (replay): with target >= 0, bv_play plays the same game (labels-only mode 2 plays c2's
+ * buys, so the game does not depend on grading), grades only decision number `target`, with k draws from `seed`, and
+ * all legal buys as candidates if all = 1. Off with target -1. */
+static int g_rg_target = -1, g_rg_k, g_rg_all, g_didx;
+static uint64_t g_rg_seed;
+static long g_rejected;
+void bv_set_regrade(int target, int k, uint64_t seed, int all) { g_rg_target = target; g_rg_k = k; g_rg_seed = seed; g_rg_all = all; }
+long bv_rejected(void) { return g_rejected; }
+
+/* per-decision latency (seconds) of graded / student decisions, read and reset by bv_lat */
+static float g_lat[8192];
+static int g_nlat;
+int bv_lat(float *out, int max) {
+    int n = g_nlat < max ? g_nlat : max;
+    memcpy(out, g_lat, n * sizeof(float));
+    g_nlat = 0;
+    return n;
+}
+static double bv_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + 1e-9 * t.tv_nsec; }
 static bv_rec *g_bvrec;
 
 /* hidden zones in a canonical order, so equal observations give equal samples */
@@ -196,6 +219,7 @@ static int bv_fast_decide(void *ctx, const de_game *g, int kind, int me, int sub
 }
 
 static int g_roll_kind = DE_BUY;    /* which decision the rollouts resume from: DE_BUY or DE_PLAY_ACTION */
+static int g_last_cap, g_last_err;  /* the last rollout hit the round cap / an engine error */
 static float rollout(const de_game *g, int me, int cand, uint64_t seed) {
     static de_game c;
     c = *g;
@@ -208,6 +232,7 @@ static float rollout(const de_game *g, int me, int cand, uint64_t seed) {
     if (g_roll_kind == DE_PLAY_ACTION) de_resume_action(&c, ag, cand == RL_PASS ? -1 : cand, 1);
     else de_resume_buy(&c, ag, cand == RL_PASS ? -1 : cand);
     g_rollouts++;
+    g_last_cap = c.capped; g_last_err = c.error;
     if (c.capped) g_capped++;
     if (c.error) g_errors++;
     int w = de_winners(&c);
@@ -242,56 +267,58 @@ static void bv_pol(const float *lg, const int *cand, int nc, float *pol) {
     for (int i = 0; i < nc; i++) pol[cand[i]] /= sum;
 }
 
-/* grade the candidates; q, se: per option (NAN if not a candidate); returns draws used */
+/* grade the candidates; q, se: per option (NAN if not a candidate; the explicit mask says which are), caps: rollouts
+ * that hit the round cap per option; returns draws used, or -1 if any rollout hit an engine error (the state is then
+ * not recorded). Adaptive draws: after k0, add 16 at a time (up to k1) while the paired difference between the actual
+ * top two candidates is within se_mult of its own standard error. */
+#define BV_KMAX 256
 static int bv_grade(const de_game *g, int me, const int *ok, const float *lg, int inc, uint64_t *rng,
-                    float *q, float *se, unsigned char *mask) {
+                    float *q, float *se, unsigned char *mask, unsigned char *caps) {
     int cand[RL_NA], nc = bv_cands(ok, lg, inc, cand);
     memset(mask, 0, RL_NA);
+    memset(caps, 0, RL_NA);
     for (int i = 0; i < nc; i++) mask[cand[i]] = 1;
-    double s[RL_NA] = {0}, d[RL_NA] = {0}, d2[RL_NA] = {0};
-    int K = 0;
+    static float V[BV_KMAX][RL_NA];
+    double s[RL_NA] = {0};
+    int K = 0, err = 0, k1 = g_cfg.k1 < BV_KMAX ? g_cfg.k1 : BV_KMAX;
     g_in_plan++;
-    while (K < g_cfg.k1) {
+    while (K < k1) {
         int step = K == 0 ? g_cfg.k0 : 16;
-        for (int k = 0; k < step && K < g_cfg.k1; k++, K++) {
+        for (int k = 0; k < step && K < k1; k++, K++) {
             uint64_t seed = de_rng_next(rng) | 1;
-            float v[RL_NA];
-            for (int i = 0; i < nc; i++) v[cand[i]] = rollout(g, me, cand[i], seed);
             for (int i = 0; i < nc; i++) {
                 int a = cand[i];
-                s[a] += v[a];
-                double x = v[a] - v[inc];
-                d[a] += x; d2[a] += x * x;
+                V[K][a] = rollout(g, me, a, seed);
+                s[a] += V[K][a];
+                if (g_last_cap && caps[a] < 255) caps[a]++;
+                err |= g_last_err;
             }
         }
-        /* stop unless the best two are close: SE of their paired difference needs a second pass; use the
-         * larger of their SEs vs the incumbent as a proxy */
         int b1 = -1, b2 = -1;
         for (int i = 0; i < nc; i++) {
             int a = cand[i];
             if (b1 < 0 || s[a] > s[b1]) { b2 = b1; b1 = a; } else if (b2 < 0 || s[a] > s[b2]) b2 = a;
         }
-        if (b2 < 0) break;
-        double gap = (s[b1] - s[b2]) / K, sd = 0;
-        for (int j = 0; j < 2; j++) {
-            int a = j ? b2 : b1;
-            if (a == inc) continue;
-            double m = d[a] / K, var = d2[a] / K - m * m;
-            double e = sqrt((var > 0 ? var : 0) / K);
-            if (e > sd) sd = e;
-        }
-        if (sd == 0 || gap > g_cfg.se_mult * sd) break;
+        if (b2 < 0 || K >= k1) break;
+        double m = 0, m2 = 0;
+        for (int k = 0; k < K; k++) { double x = V[k][b1] - V[k][b2]; m += x; m2 += x * x; }
+        m /= K;
+        double var = m2 / K - m * m, sd = sqrt((var > 0 ? var : 0) / K);
+        if (sd == 0 || m > g_cfg.se_mult * sd) break;
     }
     g_in_plan--;
     for (int a = 0; a < RL_NA; a++) { q[a] = NAN; se[a] = NAN; }
     for (int i = 0; i < nc; i++) {
         int a = cand[i];
+        double m = 0, m2 = 0;
+        for (int k = 0; k < K; k++) { double x = V[k][a] - V[k][inc]; m += x; m2 += x * x; }
+        m /= K;
+        double var = m2 / K - m * m;
         q[a] = (float)(s[a] / K);
-        double m = d[a] / K, var = d2[a] / K - m * m;
         se[a] = (float)sqrt((var > 0 ? var : 0) / K);
     }
     g_graded++;
-    return K;
+    return err ? -1 : K;
 }
 
 /* The action teacher (analysis): bv_set_act(0) off, 1 = also grade + play action decisions (DE_PLAY_ACTION: every
@@ -300,10 +327,20 @@ static int bv_grade(const de_game *g, int me, const int *ok, const float *lg, in
  * where c2 stopped, overrides that stop where c2 played, overrides that pick a different action. */
 static int g_act;
 static long g_act_stats[5];
+/* action overrides of the current game: turn, c2's choice, the teacher's, paired gain, its SE (bv_act_log reads + resets) */
+static float g_alog[512][5];
+static int g_nalog;
+int bv_act_log(float *out, int max) {
+    int n = g_nalog < max ? g_nalog : max;
+    memcpy(out, g_alog, (size_t)n * 5 * sizeof(float));
+    g_nalog = 0;
+    return n;
+}
 void bv_set_act(int a) { g_act = a; }
 void bv_act_stats(long *o) { memcpy(o, g_act_stats, sizeof g_act_stats); }
 
 static int bv_act_decide(rl_seat *s, const de_game *g, int me, int subject, const int *opts, int n, int may_pass) {
+    double t0 = bv_now();
     int ok[RL_NA] = {0}, cand[RL_NA], nc = 0;
     for (int i = 0; i < n; i++) ok[opts[i]] = 1;
     if (may_pass) ok[RL_PASS] = 1;
@@ -337,7 +374,12 @@ static int bv_act_decide(rl_seat *s, const de_game *g, int me, int subject, cons
         a = b;
         g_act_stats[1]++;
         g_act_stats[inc == RL_PASS ? 2 : b == RL_PASS ? 3 : 4]++;
+        if (g_nalog < 512) {
+            float *e = g_alog[g_nalog++];
+            e[0] = g->p[me].turns + 1; e[1] = inc; e[2] = b; e[3] = (float)m; e[4] = (float)se;
+        }
     }
+    if (g_nlat < 8192) g_lat[g_nlat++] = (float)(bv_now() - t0);
     return a == RL_PASS ? -1 : a;
 }
 
@@ -360,29 +402,46 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
     for (int a = 0; a < RL_NA; a++) if (ok[a] && (inc < 0 || lg[a] > lg[inc])) inc = a;
     int a = inc;
     g_buys++;
+    double t0 = bv_now();
     float q[RL_NA], se[RL_NA], pol[RL_NA] = {0};
-    unsigned char mask[RL_NA] = {0};
-    int K = 0;
+    unsigned char mask[RL_NA] = {0}, caps[RL_NA] = {0};
+    int K = 0, didx = -1;
     if (mode == 1 || mode == 2 || mode == 4) {
-        K = bv_grade(g, me, ok, lg, inc, &s->rng, q, se, mask);
-        int cl[RL_NA], ncl = 0;
-        for (int c = 0; c < RL_NA; c++) if (mask[c]) cl[ncl++] = c;
-        bv_pol(lg, cl, ncl, pol);
-        if (mode == 1) {
-            int b = inc;
-            for (int c = 0; c < RL_NA; c++) if (mask[c] && q[c] > q[b]) b = c;
-            if (q[b] - q[inc] > g_cfg.margin && q[b] - q[inc] > g_z * se[b]) a = b;
+        didx = g_didx++;
+        int grade = g_rg_target < 0 || didx == g_rg_target;
+        if (grade) {
+            bv_cfg keep = g_cfg;
+            uint64_t rr = g_rg_seed | 1, *rng = &s->rng;
+            if (g_rg_target >= 0) {
+                g_cfg.k0 = g_cfg.k1 = g_rg_k;
+                if (g_rg_all) g_cfg.topn = RL_NA;
+                rng = &rr;
+            }
+            K = bv_grade(g, me, ok, lg, inc, rng, q, se, mask, caps);
+            g_cfg = keep;
+            if (K < 0) { g_rejected++; K = 0; }          /* an engine error in a rollout: not a label */
+        }
+        if (K) {
+            int cl[RL_NA], ncl = 0;
+            for (int c = 0; c < RL_NA; c++) if (mask[c]) cl[ncl++] = c;
+            bv_pol(lg, cl, ncl, pol);
+            if (mode == 1) {
+                int b = inc;
+                for (int c = 0; c < RL_NA; c++) if (mask[c] && q[c] > q[b]) b = c;
+                if (q[b] - q[inc] > g_cfg.margin && q[b] - q[inc] > g_z * se[b]) a = b;
+            }
         }
     }
     if ((mode == 3 || mode == 4) && g_student) {
-        float sq[RL_NA], pol[RL_NA];
+        float sq[RL_NA], spol[RL_NA];
         int cand[RL_NA], nc = bv_cands(ok, lg, inc, cand);
-        bv_pol(lg, cand, nc, pol);
-        bv_student(g_student, x, pol, sq);
+        bv_pol(lg, cand, nc, spol);
+        bv_student(g_student, x, spol, sq);
         int b = inc;
         for (int i = 0; i < nc; i++) if (sq[cand[i]] > sq[b]) b = cand[i];
         if (sq[b] - sq[inc] > g_cfg.margin) a = b;
     }
+    if (mode != 2 && g_nlat < 8192) g_lat[g_nlat++] = (float)(bv_now() - t0);
     if (a != inc) g_overrides++;
     if (K && g_bvrec && g_bvrec->n < g_bvrec->max) {
         bv_rec *r = g_bvrec;
@@ -392,6 +451,8 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
         memcpy(r->SE + (size_t)k * RL_NA, se, sizeof se);
         if (r->CAND) memcpy(r->CAND + (size_t)k * RL_NA, mask, RL_NA);
         if (r->POL) memcpy(r->POL + (size_t)k * RL_NA, pol, sizeof pol);
+        if (r->CAPS) memcpy(r->CAPS + (size_t)k * RL_NA, caps, RL_NA);
+        if (r->DIDX) r->DIDX[k] = didx;
         r->INC[k] = inc; r->CHOSE[k] = a; r->K[k] = K; r->SEAT[k] = me; r->TURN[k] = g->p[me].turns + 1;
     }
     if (!g_in_plan) {                                   /* clip trace, as rl_decide */
@@ -408,8 +469,9 @@ int bv_play(const int *mode, const float *prm0, const float *prm1, const int *nh
             const int *genome0, const int *genome1, const int *bvmode,
             const int *kingdom, int kn, uint64_t seed, uint64_t rng_seed,
             float *X, float *Q, float *SE, int *INC, int *CHOSE, int *K, int *SEAT, int *TURN,
-            unsigned char *CAND, float *POL, int max_rec, int *out) {
-    bv_rec rec = {X, Q, SE, INC, CHOSE, K, SEAT, TURN, CAND, POL, max_rec, 0};
+            unsigned char *CAND, float *POL, int *DIDX, unsigned char *CAPS, int max_rec, int *out) {
+    bv_rec rec = {X, Q, SE, INC, CHOSE, K, SEAT, TURN, CAND, POL, DIDX, CAPS, max_rec, 0};
+    g_didx = 0;
     g_bvrec = &rec;
     r_rec = NULL;
     const float *prm[2] = {prm0, prm1};
@@ -455,4 +517,60 @@ void bv_hide_probe(const de_game *g, int me, uint64_t seed, int *my_deck, int *o
     de_hide(&c, me, seed);
     memcpy(my_deck, c.p[me].deck, c.p[me].deck_n * sizeof(int));
     memcpy(opp_hand, c.p[1 - me].hand, c.p[1 - me].hand_n * sizeof(int));
+}
+
+/* Observation-equivalence self-test: plays c2 vs c2 until seat 0's first buy with at least `turn` turns done, then grades
+ * that state (k draws, all legal buys) three ways from one seed: as is; with my draw pile in another order and the
+ * opponent's hidden cards split differently between hand and deck (the same observation); and with one opponent card
+ * replaced by another (a different observation). out[0] = max |q diff| of the same observation (0 expected), out[1] =
+ * of the different one (> 0 expected). Returns 1 if a state was found. */
+static de_game g_snap;
+static int g_snap_on, g_snap_got, g_snap_turn;
+static int snap_decide(void *ctx, const de_game *g, int kind, int me, int subject, const int *opts, int n, int may_pass) {
+    if (g_snap_on && !g_snap_got && kind == DE_BUY && me == 0 && g->p[0].turns >= g_snap_turn && g->p[0].deck_n > 2 &&
+        g->p[1].deck_n > 1 && g->p[1].hand_n > 0) { g_snap = *g; g_snap_got = 1; }
+    return rl_decide(ctx, g, kind, me, subject, opts, n, may_pass);
+}
+int bv_canon_test(const float *prm, int nh, int nf, const int *kingdom, int kn, uint64_t seed, int turn, int k, float *out) {
+    rl_seat st[2];
+    for (int i = 0; i < 2; i++) {
+        memset(&st[i], 0, sizeof st[i]);
+        st[i].mode = RL_NET; st[i].prm = prm; st[i].nh = nh; st[i].nf = nf; st[i].temp = 1; st[i].rng = 7 + i;
+        g_cont[i] = st[i];
+    }
+    de_agent ag[2] = {{snap_decide, &st[0]}, {snap_decide, &st[1]}};
+    de_game g;
+    g_snap_on = 1; g_snap_got = 0; g_snap_turn = turn;
+    de_init(&g, kingdom, kn, 2, seed);
+    de_run(&g, ag);
+    g_snap_on = 0;
+    if (!g_snap_got) return 0;
+    de_game v[3] = {g_snap, g_snap, g_snap};
+    de_player *p = &v[1].p[0], *o = &v[1].p[1];
+    for (int i = 0; i < p->deck_n / 2; i++) { int t = p->deck[i]; p->deck[i] = p->deck[p->deck_n - 1 - i]; p->deck[p->deck_n - 1 - i] = t; }
+    for (int i = 0; i < o->deck_n; i++)              /* swap a hand card with a different deck card */
+        if (o->deck[i] != o->hand[0]) { int t = o->deck[i]; o->deck[i] = o->hand[0]; o->hand[0] = t; break; }
+    de_player *o2 = &v[2].p[1];
+    o2->deck[0] = o2->deck[0] == DE_GOLD ? DE_CURSE : DE_GOLD;
+    int ok[RL_NA] = {0};
+    for (int c = 0; c < DE_NUM_CARDS; c++) ok[c] = v[0].supply[c] > 0 && DE_CARDS[c].cost <= v[0].coins;
+    ok[RL_PASS] = 1;
+    float x[RL_NF], lg[RL_NA], q[3][RL_NA], se[RL_NA];
+    unsigned char mask[RL_NA], caps[RL_NA];
+    rl_features(&v[0], 0, DE_BUY, -1, x);
+    rl_eval(prm, nh, nf, x, lg);
+    int inc = -1;
+    for (int a = 0; a < RL_NA; a++) if (ok[a] && (inc < 0 || lg[a] > lg[inc])) inc = a;
+    bv_cfg keep = g_cfg;
+    g_cfg.k0 = g_cfg.k1 = k; g_cfg.topn = RL_NA;
+    for (int j = 0; j < 3; j++) { uint64_t r = 12345; bv_grade(&v[j], 0, ok, lg, inc, &r, q[j], se, mask, caps); }
+    g_cfg = keep;
+    out[0] = out[1] = 0;
+    for (int a = 0; a < RL_NA; a++) {
+        if (!mask[a]) continue;
+        float d1 = fabsf(q[1][a] - q[0][a]), d2 = fabsf(q[2][a] - q[0][a]);
+        if (d1 > out[0]) out[0] = d1;
+        if (d2 > out[1]) out[1] = d2;
+    }
+    return 1;
 }

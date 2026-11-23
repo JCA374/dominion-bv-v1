@@ -51,7 +51,13 @@ lib.bv_pol_of.argtypes = [_F, ctypes.c_int, ctypes.c_int, _F, _U8, _F]
 lib.bv_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
 lib.bv_play.restype = ctypes.c_int
 lib.bv_play.argtypes = [_I, _F, _F, _I, _I, _I, _I, _I, _I, ctypes.c_int, ctypes.c_uint64, ctypes.c_uint64,
-                        _F, _F, _F, _I, _I, _I, _I, _I, ctypes.POINTER(ctypes.c_ubyte), _F, ctypes.c_int, _I]
+                        _F, _F, _F, _I, _I, _I, _I, _I, ctypes.POINTER(ctypes.c_ubyte), _F, _I,
+                        ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int, _I]
+lib.bv_set_regrade.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_int]
+lib.bv_rejected.restype = ctypes.c_long
+lib.bv_lat.argtypes = [_F, ctypes.c_int]
+lib.bv_act_log.argtypes = [_F, ctypes.c_int]
+lib.bv_canon_test.argtypes = [_F, ctypes.c_int, ctypes.c_int, _I, ctypes.c_int, ctypes.c_uint64, ctypes.c_int, ctypes.c_int, _F]
 lib.rl_num_params.argtypes = [ctypes.c_int, ctypes.c_int]
 GA, NET = 0, 2
 MAX_REC = 200
@@ -120,7 +126,9 @@ def play(seats, kingdom, seed, rng_seed=1):
     SE = np.zeros((MAX_REC, NA), np.float32)
     INC, CH, K, SEAT, TURN = (np.zeros(MAX_REC, np.int32) for _ in range(5))
     CAND = np.zeros((MAX_REC, NA), np.uint8)
+    CAPS = np.zeros((MAX_REC, NA), np.uint8)
     POL = np.zeros((MAX_REC, NA), np.float32)
+    DIDX = np.zeros(MAX_REC, np.int32)
     shapes = [net_shape(s.prm) if s.mode == NET else (256, NF) for s in seats]
     out = (ctypes.c_int * 6)()
     pi = lambda a: a.ctypes.data_as(_I)  # noqa: E731
@@ -128,13 +136,14 @@ def play(seats, kingdom, seed, rng_seed=1):
                     _ints([a for a, _ in shapes]), _ints([b for _, b in shapes]), seats[0].genome, seats[1].genome,
                     _ints([s.bv for s in seats]), k, len(kingdom), seed & (2**64 - 1), rng_seed & (2**64 - 1),
                     _f(X), _f(Q), _f(SE), pi(INC), pi(CH), pi(K), pi(SEAT), pi(TURN),
-                    CAND.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), _f(POL), MAX_REC, out)
+                    CAND.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), _f(POL), pi(DIDX),
+                    CAPS.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), MAX_REC, out)
     m = out[0]
     return {"winners": [i for i in range(2) if m >> i & 1], "scores": [out[1], out[2]], "turns": [out[3], out[4]],
             "capped": bool(out[5] & 1), "error": bool(out[5] & 2),
             "rec": {"X": X[:n], "Q": Q[:n], "SE": SE[:n], "INC": INC[:n], "CHOSE": CH[:n], "K": K[:n],
                     "SEAT": SEAT[:n], "TURN": TURN[:n],
-                    "CAND": CAND[:n], "POL": POL[:n]}}
+                    "CAND": CAND[:n], "POL": POL[:n], "DIDX": DIDX[:n], "CAPS": CAPS[:n]}}
 
 
 def points(r, seat):
@@ -165,3 +174,54 @@ def policy_prior(X, mask, net="rl3_c2_2654.npy"):
     for i in range(len(X)):
         lib.bv_pol_of(_f(p), nh, nf, _f(X[i]), M[i].ctypes.data_as(U8), _f(P[i]))
     return P
+
+
+def latencies():
+    """Seconds per graded / student / action-teacher decision since the last call."""
+    b = np.zeros(8192, np.float32)
+    return b[:lib.bv_lat(_f(b), 8192)].copy()
+
+
+def action_log():
+    """Action overrides since the last call: rows (turn, c2's choice, teacher's choice, paired gain, SE)."""
+    b = np.zeros((512, 5), np.float32)
+    return b[:lib.bv_act_log(_f(b), 512)].copy()
+
+
+def replay_game(key):
+    """The seats and kingdom of a recorded label (key: kingdom, seed, seat, opp) as collect.py played it."""
+    k = key["kingdom"]
+    me = seat_for("c2", k, 2)
+    op = seat_for(key["opp"], k)
+    return ([me, op] if key["seat"] == 0 else [op, me]), k
+
+
+def key_of(D, i, opps=("c2", "c1", "rl1", "ga2")):
+    """The replay key of label row i of a loaded/np.load-ed shard dict."""
+    return {"kingdom": str(D["KING"][i]).split(","), "seed": int(D["SEED"][i]), "seat": int(D["SEAT0"][i]),
+            "opp": opps[int(D["OPP"][i])]}
+
+
+def regrade(key, didx, k, seed, all_legal=True):
+    """Replay a recorded game and grade only its decision number didx with k draws from seed (all legal buys if
+    all_legal). Returns that record (dict of arrays, one row) or None."""
+    seats, kg = replay_game(key)
+    lib.bv_set_regrade(int(didx), int(k), int(seed) & (2**64 - 1), int(all_legal))
+    try:
+        r = play(seats, kg, key["seed"], key["seed"] ^ 0x5EED)
+    finally:
+        lib.bv_set_regrade(-1, 0, 0, 0)
+    rec = r["rec"]
+    i = np.where(rec["DIDX"] == didx)[0]
+    return {x: v[i[0]] for x, v in rec.items()} if len(i) else None
+
+
+def canon_test(seed, turn=5, k=8, kingdom=None):
+    """bv_canon_test: (max |q diff| same observation, max |q diff| different observation) or None."""
+    import random as _r
+    kg = kingdom or random_kingdom(_r.Random(seed))
+    p = params("rl3_c2_2654.npy")
+    nh, nf = net_shape(p)
+    out = np.zeros(2, np.float32)
+    ok = lib.bv_canon_test(_f(p), nh, nf, _ints([ID[c] for c in kg]), len(kg), seed, turn, k, _f(out))
+    return (float(out[0]), float(out[1])) if ok else None

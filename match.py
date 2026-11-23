@@ -46,7 +46,9 @@ def job(g):
     dact = [x - y for x, y in zip(act, prev)]
     _A["_act"] = act
     return {**g, "act_graded": dact[0], "act_overrides": dact[1], "act_play_not_stop": dact[2],
-            "act_stop_not_play": dact[3], "act_other_action": dact[4], "points": core.points(r, s), "secs": round(time.time() - t, 2), "capped": r["capped"],
+            "act_stop_not_play": dact[3], "act_other_action": dact[4],
+            "lat": [round(float(x), 5) for x in core.latencies()],
+            "act_log": [[round(float(v), 4) for v in row] for row in core.action_log()], "points": core.points(r, s), "secs": round(time.time() - t, 2), "capped": r["capped"],
             "error": r["error"], **{x: after[x] - before[x] for x in ("rollouts", "overrides", "buys")}}
 
 
@@ -61,6 +63,21 @@ def games(stream, n, skip=0):
     return out
 
 
+STREAMS = {"gate": 200, "dev": 300, "dev2": 300, "reserved": 2000, "confirm": 2000, "suite": 300}
+
+
+def eval_kingdoms():
+    """Canonical keys of every kingdom any evaluation stream can deal (collect.py never trains on them)."""
+    from bv.core import random_kingdom
+    out = set()
+    for st, n in STREAMS.items():
+        rng = random.Random(f"bv-v1 {st} kingdoms")
+        for _ in range(n):
+            out.add(",".join(sorted(random_kingdom(rng))))
+            rng.getrandbits(32)
+    return out
+
+
 def summary(res):
     by = {}
     for r in res:
@@ -70,7 +87,18 @@ def summary(res):
     boot = [blocks[rng.integers(0, len(blocks), len(blocks))].mean() for _ in range(2000)] if len(blocks) else [0]
     m = float(np.mean([r["points"] for r in res])) if res else 0.0
     b = sum(r["buys"] for r in res)
-    return {"games": len(res), "score": round(m, 4), "ci95": [round(float(np.percentile(boot, 2.5)), 4),
+    lat = np.array([x for r in res for x in r.get("lat", [])])
+    alog = [row for r in res for row in r.get("act_log", [])]
+    from bv.core import NAME
+    nm = lambda a: "end actions" if int(a) == 33 else NAME[int(a)]  # noqa: E731
+    changes = {}
+    for row in alog:
+        kk = f"{nm(row[1])} -> {nm(row[2])}"
+        changes[kk] = changes.get(kk, 0) + 1
+    return {"latency_s": ({"decisions": int(len(lat)), "p50": round(float(np.percentile(lat, 50)), 4),
+                           "p95": round(float(np.percentile(lat, 95)), 4)} if len(lat) else None),
+            "action_overrides": ({"n": len(alog), "mean_gain": round(float(np.mean([r[3] for r in alog])), 4),
+                                  "top_changes": sorted(changes.items(), key=lambda kv: -kv[1])[:12]} if alog else None),"games": len(res), "score": round(m, 4), "ci95": [round(float(np.percentile(boot, 2.5)), 4),
             round(float(np.percentile(boot, 97.5)), 4)], "override_rate": round(sum(r["overrides"] for r in res) / max(b, 1), 4),
             "secs_per_game": round(float(np.mean([r["secs"] for r in res])), 2) if res else 0,
             "rollouts": sum(r["rollouts"] for r in res), "capped": sum(r["capped"] for r in res),
@@ -98,7 +126,16 @@ def main():
     a = vars(ap.parse_args())
     gs = games(a["stream"], a["kingdoms"])
     out = os.path.join(ROOT, "results", f"match_{a['name']}")
+    from bv import core as _c
+    manifest = {k: v for k, v in a.items() if k not in ("workers", "resume")}
+    manifest["models"] = {m: _c.sha(m) for m in ("rl3_c2_2654.npy", "rl3_c1_2300.npy", "rl1_r2_2200.npy")}
+    manifest["student_sha"] = (__import__("hashlib").sha256(open(a["student"], "rb").read()).hexdigest()[:16]
+                               if a["student"] else None)
     res = []
+    if a["resume"] and os.path.exists(out + ".json"):
+        old = json.load(open(out + ".json")).get("manifest")
+        if old is not None and old != manifest:          # never mix games of different settings
+            raise SystemExit(f"resume refused: manifest differs from {out}.json")
     if a["resume"] and os.path.exists(out + ".jsonl"):
         res = [json.loads(line) for line in open(out + ".jsonl")]
         have = {(r["i"], r["seat"]) for r in res}
@@ -112,7 +149,7 @@ def main():
             f.flush()
             if (i + 1) % 50 == 0 or i + 1 == n0 + len(gs):
                 s = summary(res)
-                json.dump({"name": a["name"], "args": a, "t": time.strftime("%Y-%m-%d %H:%M"), "done": i + 1 == n0 + len(gs),
+                json.dump({"name": a["name"], "args": a, "manifest": manifest, "t": time.strftime("%Y-%m-%d %H:%M"), "done": i + 1 == n0 + len(gs),
                            "wall_secs": round(time.time() - t), **s}, open(out + ".json", "w"), indent=1)
                 print(f"{a['name']}: {i + 1}/{n0 + len(gs)} score {100 * s['score']:.1f}% ci {s['ci95']} "
                       f"override {s['override_rate']:.2f}", flush=True)

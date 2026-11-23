@@ -1,7 +1,7 @@
 {
  "run": "p1",
  "round": 24,
- "stage": 3,
+ "stage": 2,
  "states": 404246,
  "best_dev": 0.5183,
  "started": "2026-11-22 22:57",
