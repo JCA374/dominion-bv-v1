@@ -1,0 +1,35 @@
+{
+ "name": "both_teacher_c2",
+ "args": {
+  "name": "both_teacher_c2",
+  "base": "c2",
+  "bv": 1,
+  "opp": "c2",
+  "k0": 32,
+  "k1": 32,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.02,
+  "student": "",
+  "z": 2.0,
+  "act": 1,
+  "resume": false,
+  "stream": "gate",
+  "kingdoms": 150,
+  "workers": 7
+ },
+ "t": "2026-11-23 19:20",
+ "done": false,
+ "wall_secs": 610,
+ "games": 100,
+ "score": 0.625,
+ "ci95": [
+  0.555,
+  0.7
+ ],
+ "override_rate": 0.042,
+ "secs_per_game": 42.49,
+ "rollouts": 962208,
+ "capped": 0,
+ "errors": 0
+}
