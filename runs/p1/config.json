@@ -1,7 +1,7 @@
 {
  "pilot_states": 2000,
  "round_states": 20000,
- "workers": 7,
+ "workers": 4,
  "k0": 16,
  "k1": 16,
  "se": 1.5,
@@ -19,6 +19,7 @@
  ],
  "dagger_after": 0.505,
  "promote_at": 0.53,
- "reserved_kingdoms": 2000,
+ "confirm_kingdoms": 2000,
+ "ga_tolerance": 0.01,
  "max_rounds": 200
 }
