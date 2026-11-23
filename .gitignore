@@ -10,3 +10,9 @@ __pycache__/
 publish_loop.pid
 runs/*/checkpoint*
 .venv
+bench/rs/target/
+bench/*.f32
+bench/bench
+bench/bench_pg
+bench/kern
+bench/gmon.out
