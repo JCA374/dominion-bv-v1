@@ -105,3 +105,4 @@
 {"t": "2026-11-23 20:03", "kind": "fit", "msg": "round 24: 365353 train states, dev regret 0.0471 (incumbent 0.0454), top-1 28%", "note": "round 24: 365353 train states, dev regret 0.0471 (incumbent 0.0454), top-1 28%", "secs": 413}
 {"t": "2026-11-23 20:03", "kind": "dev", "msg": "round 24: student on c2 vs c2 m0.02: 51.4% (override 2%), m0.05: 50.1% (override 0%), m0.1: 50.0% (override 0%)", "note": "round 24: student on c2 vs c2 m0.02: 51.4% (override 2%), m0.05: 50.1% (override 0%), m0.1: 50.0% (override 0%)"}
 {"t": "2026-11-23 20:03", "kind": "collect", "msg": "round 25: collecting 20000 states (DAgger: student plays)", "note": "round 25: collecting 20000 states (DAgger: student plays)"}
+{"t": "2026-11-23 20:12", "kind": "collect", "msg": "round 25: collecting 20000 states (c2 plays)", "note": "round 25: collecting 20000 states (c2 plays)"}

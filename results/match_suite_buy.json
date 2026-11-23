@@ -1,0 +1,63 @@
+{
+ "name": "suite_buy",
+ "args": {
+  "name": "suite_buy",
+  "base": "c2",
+  "bv": 1,
+  "opp": "c2",
+  "k0": 32,
+  "k1": 32,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.02,
+  "student": "",
+  "z": 2.0,
+  "act": 0,
+  "resume": false,
+  "stream": "suite",
+  "kingdoms": 150,
+  "workers": 3
+ },
+ "manifest": {
+  "name": "suite_buy",
+  "base": "c2",
+  "bv": 1,
+  "opp": "c2",
+  "k0": 32,
+  "k1": 32,
+  "se": 1.5,
+  "topn": 5,
+  "margin": 0.02,
+  "student": "",
+  "z": 2.0,
+  "act": 0,
+  "stream": "suite",
+  "kingdoms": 150,
+  "models": {
+   "rl3_c2_2654.npy": "0018fb85b6cc87ec",
+   "rl3_c1_2300.npy": "daae8a0049b13346",
+   "rl1_r2_2200.npy": "47ed00b6f7cfa628"
+  },
+  "student_sha": null
+ },
+ "t": "2026-11-23 20:21",
+ "done": false,
+ "wall_secs": 509,
+ "latency_s": {
+  "decisions": 1317,
+  "p50": 0.9055,
+  "p95": 2.7113
+ },
+ "action_overrides": null,
+ "games": 50,
+ "score": 0.6,
+ "ci95": [
+  0.48,
+  0.7
+ ],
+ "override_rate": 0.0456,
+ "secs_per_game": 29.98,
+ "rollouts": 263232,
+ "capped": 0,
+ "errors": 0
+}

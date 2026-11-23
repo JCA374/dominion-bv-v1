@@ -4,12 +4,12 @@
   {
    "name": "1 Labels",
    "world": "c2 plays every buy; the teacher grades it with paired rollouts to the end",
-   "pass": "pilot: cap/error rate < 1%, labels reproducible"
+   "pass": "pilot (in code): capped and rejected rollouts < 1%, the test suite (reproducible + replayable labels) passes"
   },
   {
    "name": "2 Student fit",
    "world": "fit the Deep Sets student on all labels; dev match student-on-c2 vs c2",
-   "pass": "dev score >= 50.5% at the best margin"
+   "pass": "dev score >= 50.5% at the best margin, confirmed on an independent dev stream"
   },
   {
    "name": "3 DAgger",
@@ -18,8 +18,8 @@
   },
   {
    "name": "4 Promotion",
-   "world": "2,000 reserved kingdoms, both seats, vs c1 2300 and c2 2654",
-   "pass": ">= 53% vs both, kingdom-block 95% interval above 50%"
+   "world": "2,000 fresh confirmation kingdoms, both seats, vs c1 2300, c2 2654 and the GA base",
+   "pass": ">= 53% vs both RL-v3, kingdom-block 95% interval above 50%, GA base no more than 1 point below plain c2's"
   }
  ]
 }
