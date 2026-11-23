@@ -23,7 +23,7 @@ import numpy as np
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
 CFG = {"pilot_states": 2000, "round_states": 20000, "workers": 7, "k0": 16, "k1": 16, "se": 1.5, "topn": 5,
-       "epochs": 6, "batch": 512, "lr": 1e-3, "rank_w": 10.0, "dev_kingdoms": 300, "margins": [0.02, 0.05, 0.1],
+       "epochs": 6, "batch": 512, "lr": 1e-3, "rank_w": 10.0, "value_w": 0.1, "dev_kingdoms": 300, "margins": [0.02, 0.05, 0.1],
        "dagger_after": 0.505, "promote_at": 0.53, "reserved_kingdoms": 2000, "max_rounds": 200}
 STAGES = [
     {"id": 1, "name": "Labels", "what": "c2 plays every buy; the teacher grades it with paired rollouts to the end",
@@ -66,9 +66,23 @@ class Run:
 
 
 def load(run):
+    """All shards in one preallocated array per field (no second copy)."""
     fs = sorted(glob.glob(os.path.join(ROOT, "data", run, "*.npz")))
-    parts = [dict(np.load(f)) for f in fs]
-    return {k: np.concatenate([p[k] for p in parts]) for k in parts[0]} if parts else None
+    if not fs:
+        return None
+    sizes = []
+    for f in fs:
+        with np.load(f) as z:
+            sizes.append(len(z["K"]))
+    with np.load(fs[0]) as z:
+        out = {k: np.empty((sum(sizes),) + z[k].shape[1:], z[k].dtype) for k in z.files}
+    o = 0
+    for f, n in zip(fs, sizes):
+        with np.load(f) as z:
+            for k in z.files:
+                out[k][o:o + n] = z[k]
+        o += n
+    return out
 
 
 def fit(D, init=None, log=print):
@@ -81,12 +95,12 @@ def fit(D, init=None, log=print):
         m.load_state_dict(init)
     tr, dv = np.where(D["SPLIT"] == 2)[0], np.where(D["SPLIT"] == 0)[0]
     from bv.core import policy_prior
-    X = torch.tensor(D["X"])
-    POL = torch.tensor(policy_prior(D["X"], D["Q"]))
-    Q = torch.tensor(np.nan_to_num(D["Q"], nan=0.0))
-    M = torch.tensor(~np.isnan(D["Q"]))
-    SE = torch.tensor(np.nan_to_num(D["SE"], nan=1.0))
-    INC = torch.tensor(D["INC"].astype(np.int64))
+    X = torch.from_numpy(D["X"])                     # shares memory with the numpy array
+    POL = torch.from_numpy(policy_prior(D["X"], D["Q"]))
+    Q = torch.from_numpy(np.nan_to_num(D["Q"], nan=0.0))
+    M = torch.from_numpy(~np.isnan(D["Q"]))
+    SE = torch.from_numpy(np.nan_to_num(D["SE"], nan=1.0))
+    INC = torch.from_numpy(D["INC"].astype(np.int64))
     opt = torch.optim.Adam(m.parameters(), lr=CFG["lr"])
 
     def loss_of(idx):
@@ -100,7 +114,7 @@ def fit(D, init=None, log=print):
         qi = Q[idx].gather(1, inc[:, None])
         w = 0.0025 / (SE[idx] ** 2 + 0.0025) * mk
         lr_ = (w * ((p - pi) - (Q[idx] - qi)) ** 2).sum() / mk.sum()
-        return lv + CFG["rank_w"] * lr_, z
+        return CFG["value_w"] * lv + CFG["rank_w"] * lr_, z
 
     for ep in range(CFG["epochs"]):
         perm = tr[np.random.default_rng(ep).permutation(len(tr))]
@@ -114,10 +128,15 @@ def fit(D, init=None, log=print):
             tot += float(l_.detach()) * min(CFG["batch"], len(perm) - i)
         log(f"  epoch {ep}: train loss {tot / max(len(perm), 1):.4f}")
     m.eval()
-    with torch.no_grad():
-        idx = torch.tensor(dv)
-        l_, z = loss_of(idx)
-        z = z.masked_fill(~M[idx], -1e9).numpy()
+    with torch.no_grad():                            # in chunks: one pass over all dev states needs ~1 GB
+        zs, ls = [], []
+        for i in range(0, len(dv), 4096):
+            idx = torch.tensor(dv[i:i + 4096])
+            l_, z = loss_of(idx)
+            zs.append(z.masked_fill(~M[idx], -1e9).numpy())
+            ls.append(float(l_) * len(idx))
+        z = np.concatenate(zs)
+        l_ = torch.tensor(sum(ls) / max(len(dv), 1))
     q = D["Q"][dv]
     best = np.nanmax(q, 1)
     pick = z.argmax(1)
