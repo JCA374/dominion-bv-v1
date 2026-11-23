@@ -23,7 +23,7 @@ from dominion_engine.cards import ID, NAME, NUM_CARDS  # noqa: E402,F401
 
 SO = os.path.join(ROOT, "bv.so")
 SRC = [os.path.join(ENGINE_C, "engine.c"), os.path.join(ROOT, "c", "bv.c")]
-DEPS = SRC + [os.path.join(RL3, "c", "rl.c"), os.path.join(AZ, "c", "az.c"), os.path.join(ENGINE_C, "engine.h")]
+DEPS = SRC + [os.path.join(ROOT, "c", "fastnet.h"), os.path.join(RL3, "c", "rl.c"), os.path.join(AZ, "c", "az.c"), os.path.join(ENGINE_C, "engine.h")]
 
 
 def build() -> str:
@@ -94,6 +94,7 @@ class Seat:
 
 
 lib.bv_set_z.argtypes = [ctypes.c_float]
+lib.bv_set_fast.argtypes = [ctypes.c_int]
 
 
 def configure(k0=16, k1=64, se_mult=1.5, topn=5, margin=0.0, student=None, z=0.0):

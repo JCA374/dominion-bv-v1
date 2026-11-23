@@ -1,0 +1,14 @@
+title: 'Episode 02: The teacher beats our best model'
+kind: prose
+author: ''
+narrator: Kokoro TTS (af_heart)
+narration:
+  narrator: af_heart
+  speed: 0.95
+  paragraph_pause: 0.6
+chapters:
+  ch01: 'Episode 02: The teacher beats our best model'
+sources:
+  ch01:
+    path: /home/jonas/code/games/dominion/trainers/bv-v1/podcast/episode-02.md
+    sha1: cdceea07366db85a6d939f516607defa43eb4ab8

@@ -1,0 +1,3 @@
+== ch01  2:11 audio, checked in 125s: 2 to listen to  (3 dismissed by the second model)
+    0:35  swapped  expected: 'buy in'                         heard: 'by and'
+    1:45  swapped  expected: 'fifty percent'                  heard: 'fifty%'

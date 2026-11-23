@@ -1,0 +1,12 @@
+{
+ "games": 1000,
+ "identical": 1.0,
+ "seat0_score_ref": 0.6045,
+ "seat0_score_fast": 0.6045,
+ "ref_ci95": [
+  0.5742,
+  0.6348
+ ],
+ "passed": true,
+ "secs": 17
+}

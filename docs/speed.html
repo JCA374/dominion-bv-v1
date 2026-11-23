@@ -9,13 +9,28 @@
 <body>
 <main>
 <h1>Speed</h1>
-<p class="lede">Machine: 8 cores (laptop), 7 GB RAM, no usable GPU (integrated graphics). Everything that costs time is C: the engine and RL-v3's network, run at batch size 1 inside rollouts.
-<ul><li>Plain c2 vs c2 game: ~0.05–0.3 s.</li>
-<li>One rollout from a buy to the end of the game: ~5 ms per core (about 200 per second per core).</li>
-<li>Teacher game (every buy graded, adaptive 16→64 draws): ~97 s. With 16→32 draws: ~35 s.</li>
-<li>Labels: one position costs about 6 candidates × 16–32 rollouts ≈ 0.5–1 s per core. Measured rates are on the Training tab (states_per_s).</li>
-<li>Student: 50k parameters, one pass per buy in C (microseconds). Training on 100k positions takes a few minutes on CPU.</li></ul>
-A GPU would not help: the cost is many small sequential game simulations, not big matrix products. More CPU cores would.</p>
+<p class="lede">Machine: 4 cores / 8 threads (i5-8250U laptop), 7 GB RAM, no usable GPU. Everything that costs time is C: the engine and RL-v3's network at batch size 1 inside rollouts. All timings below were taken while training ran (load about 8), so ratios are fair and absolute numbers are noisy.</p>
+<h2>1. Where the time went (gprof, standalone teacher benchmark)</h2>
+<table><tr><th>Part</th><th>Before</th><th>After the fast net</th></tr>
+<tr><td>Network forward (dense layers)</td><td>83%</td><td>67%</td></tr>
+<tr><td>Features (de_count, draw_dist, rl_helpers)</td><td>~11%</td><td>~28%</td></tr>
+<tr><td>Engine rules</td><td>&lt; 3%</td><td>~3%</td></tr></table>
+<p>The engine is the floor: under 3%, so the ceiling was about 30× if the network cost were zero.</p>
+<h2>2. Kernel bake-off (400 recorded positions, 413→256→256→34)</h2>
+<table><tr><th>Kernel</th><th>ns / forward</th><th>Speed-up</th><th>max logit diff</th><th>same argmax</th></tr>
+<tr><td>Reference rl_eval (dense, row-major)</td><td>52,000–58,000</td><td>1×</td><td>—</td><td>—</td></tr>
+<tr><td>C sparse (transposed weights, skip zero inputs and dead units, legal logits only)</td><td>18,000–20,000</td><td><b>2.85×</b></td><td>5.5e-5</td><td>400/400</td></tr>
+<tr><td>Rust sparse (same algorithm, LTO, target-cpu=native)</td><td>32,000–38,000</td><td>1.6×</td><td>5.9e-5</td><td>400/400</td></tr></table>
+<p>Only 124 of the 413 inputs are nonzero on average, and about half the hidden units are zero after ReLU. Rust is slower here because it never reorders float sums (C's -ffast-math may), so its dot products don't vectorise as well.</p>
+<h2>3. End to end</h2>
+<table><tr><th>Measure</th><th>Before</th><th>After</th></tr>
+<tr><td>Rollouts per second, one process</td><td>62</td><td>137 (2.2×)</td></tr>
+<tr><td>Label positions per second, 5 workers</td><td>4.2–6.2</td><td>10.7</td></tr>
+<tr><td>Memory of the 5 label workers</td><td>~940 MB each (forked from the trainer)</td><td>356 MB in all (spawned)</td></tr></table>
+<h2>4. Exactness</h2>
+<p>The fast net is used for decisions only, and the gate checks decisions. On 1,000 games of c2 vs c2 (one per kingdom), 100% of games came out identical (winners, scores, turns) with the fast agent everywhere (results/fast_equivalence.json). The label checksum of the benchmark games was also unchanged.</p>
+<h2>Why not a GPU?</h2>
+<p>Each decision is one position (batch 1) inside a game that must finish before the next decision is known. That work is serial and latency-bound, so a GPU's thousands of lanes would sit idle. More CPU cores would help almost linearly.</p>
 </main>
 <script src="site.js?v=8a0c4cd7"></script>
 <script src="common.js?v=958183f8"></script>

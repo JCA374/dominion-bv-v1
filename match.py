@@ -81,6 +81,7 @@ def main():
     ap.add_argument("--margin", type=float, default=0.0)
     ap.add_argument("--student", default="")
     ap.add_argument("--z", type=float, default=0.0)
+    ap.add_argument("--resume", action="store_true", help="keep the games already in the .jsonl")
     ap.add_argument("--stream", default="gate")
     ap.add_argument("--kingdoms", type=int, default=200)
     ap.add_argument("--workers", type=int, default=6)
@@ -88,17 +89,22 @@ def main():
     gs = games(a["stream"], a["kingdoms"])
     out = os.path.join(ROOT, "results", f"match_{a['name']}")
     res = []
+    if a["resume"] and os.path.exists(out + ".jsonl"):
+        res = [json.loads(line) for line in open(out + ".jsonl")]
+        have = {(r["i"], r["seat"]) for r in res}
+        gs = [g for g in gs if (g["i"], g["seat"]) not in have]
     t = time.time()
-    with mp.Pool(a["workers"], init, (a,)) as pool, open(out + ".jsonl", "w") as f:
-        for i, r in enumerate(pool.imap_unordered(job, gs)):
+    n0 = len(res)
+    with mp.Pool(a["workers"], init, (a,)) as pool, open(out + ".jsonl", "a" if n0 else "w") as f:
+        for i, r in enumerate(pool.imap_unordered(job, gs), start=n0):
             res.append(r)
             f.write(json.dumps(r) + "\n")
             f.flush()
-            if (i + 1) % 50 == 0 or i + 1 == len(gs):
+            if (i + 1) % 50 == 0 or i + 1 == n0 + len(gs):
                 s = summary(res)
-                json.dump({"name": a["name"], "args": a, "t": time.strftime("%Y-%m-%d %H:%M"), "done": i + 1 == len(gs),
+                json.dump({"name": a["name"], "args": a, "t": time.strftime("%Y-%m-%d %H:%M"), "done": i + 1 == n0 + len(gs),
                            "wall_secs": round(time.time() - t), **s}, open(out + ".json", "w"), indent=1)
-                print(f"{a['name']}: {i + 1}/{len(gs)} score {100 * s['score']:.1f}% ci {s['ci95']} "
+                print(f"{a['name']}: {i + 1}/{n0 + len(gs)} score {100 * s['score']:.1f}% ci {s['ci95']} "
                       f"override {s['override_rate']:.2f}", flush=True)
 
 

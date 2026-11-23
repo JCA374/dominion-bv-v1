@@ -1,0 +1,14 @@
+[02:17:16] prep + narrate (Kokoro)
+[02:28:50] listen-check (Whisper)
+[02:31:17] pipeline stages PASS: 5/5
+  listen flag:     0:35  swapped  expected: 'buy in'                         heard: 'by and'
+  listen flag:     1:45  swapped  expected: 'fifty percent'                  heard: 'fifty%'
+[02:31:17] episode-02.mp3: 134 s
+2 episode(s)
+[02:31:17] tests
+3 passed in 20.66s
+[02:31:43] waiting for GitHub Pages (41589935ec0385e156466acf65ed88d1a7383e30)
+[02:32:31]   200 https://jca374.github.io/dominion-bv-v1/podcast/index.html
+[02:32:32]   200 https://jca374.github.io/dominion-bv-v1/podcast/episode-02.mp3
+[02:32:32]   200 https://jca374.github.io/dominion-bv-v1/data/podcast.json
+DEPLOYED https://jca374.github.io/dominion-bv-v1/podcast/index.html (episode 02: The teacher beats our best model, 134 s)

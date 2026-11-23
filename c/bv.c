@@ -7,6 +7,7 @@
  * az-v1's az.c and dominion-v1's ga_agent.c). Adds no rules: only de_hide + de_resume_buy on copies.
  */
 #include "../rl-v3/c/rl.c"
+#include "fastnet.h"
 
 /* ── the student (Deep Sets over card tokens), forward pass; see bv/student.py for the layout ── */
 #define BV_TOK 17           /* per-card token features (bv_tokens) */
@@ -169,6 +170,29 @@ static void canon(de_game *c, int me) {
 
 static rl_seat g_cont[2];       /* the continuation policies of this game (greedy, no records) */
 
+/* Fast continuation agent: a NET seat's greedy choice with fastnet (sparse, legal logits only); same decision as
+ * rl_decide's greedy path inside a rollout (no records, no planner, no card school, no chain rule), up to float
+ * rounding in the logits. GA seats go to rl_decide. bv_set_fast: 0 = rl_decide everywhere (reference),
+ * 1 = fast in rollouts (default), 2 = fast in the main game as well (equivalence tests). */
+static int g_fast = 1;
+void bv_set_fast(int f) { g_fast = f; }
+static int bv_fast_decide(void *ctx, const de_game *g, int kind, int me, int subject,
+                          const int *opts, int n, int may_pass) {
+    rl_seat *s = ctx;
+    if (s->mode != RL_NET || s->sample || s->record) return rl_decide(ctx, g, kind, me, subject, opts, n, may_pass);
+    if (n + (may_pass != 0) == 1) return n ? opts[0] : -1;
+    int ok[RL_NA] = {0};
+    for (int i = 0; i < n; i++) ok[opts[i]] = 1;
+    if (may_pass) ok[RL_PASS] = 1;
+    float x[RL_NF], lg[RL_NA];
+    rl_features(g, me, kind, subject, x);
+    fnet_logits(fnet_get(s->prm, s->nh, s->nf), x, ok, RL_NA, lg);
+    int a = -1;
+    for (int i = 0; i < RL_NA; i++) if (ok[i] && (a < 0 || lg[i] > lg[a])) a = i;
+    s->decisions++;
+    return a == RL_PASS ? -1 : a;
+}
+
 static float rollout(const de_game *g, int me, int cand, uint64_t seed) {
     static de_game c;
     c = *g;
@@ -176,7 +200,8 @@ static float rollout(const de_game *g, int me, int cand, uint64_t seed) {
     de_hide(&c, me, seed);
     rl_seat rs[2] = {g_cont[0], g_cont[1]};
     rs[0].rng = rs[1].rng = seed ^ 0x9E3779B97F4A7C15ULL;
-    de_agent ag[2] = {{rl_decide, &rs[0]}, {rl_decide, &rs[1]}};
+    de_decide_fn fn = g_fast ? bv_fast_decide : rl_decide;
+    de_agent ag[2] = {{fn, &rs[0]}, {fn, &rs[1]}};
     de_resume_buy(&c, ag, cand == RL_PASS ? -1 : cand);
     g_rollouts++;
     if (c.capped) g_capped++;
@@ -268,7 +293,7 @@ static int bv_decide(void *ctx, const de_game *g, int kind, int me, int subject,
     rl_seat *s = ctx;
     int mode = g_bv_mode[me & 1];
     if (g_in_plan || kind != DE_BUY || mode == 0 || s->mode != RL_NET || n + (may_pass != 0) < 2)
-        return rl_decide(ctx, g, kind, me, subject, opts, n, may_pass);
+        return (g_fast == 2 && !g_in_plan ? bv_fast_decide : rl_decide)(ctx, g, kind, me, subject, opts, n, may_pass);
     int ok[RL_NA] = {0};
     for (int i = 0; i < n; i++) ok[opts[i]] = 1;
     if (may_pass) ok[RL_PASS] = 1;

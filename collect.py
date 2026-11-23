@@ -66,7 +66,7 @@ def worker(a, wid, quota, q):
 
 def collect(a):
     """Runs workers until a['states'] labels exist; returns rollout stats."""
-    ctx = mp.get_context("fork")
+    ctx = mp.get_context("spawn")             # clean workers: not a copy of the trainer's data and torch
     q = ctx.Queue()
     if a["states"] <= 0:
         return {"rollouts": 0, "capped": 0, "errors": 0, "graded": 0, "overrides": 0, "buys": 0, "states": 0,
