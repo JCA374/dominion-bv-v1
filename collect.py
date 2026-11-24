@@ -3,7 +3,11 @@ teacher grades every buy of the c2 seat by paired rollouts. Kingdoms: uniform ra
 engine slices. Split by canonical kingdom hash: 0 dev, 1 test, else train.
 
     python collect.py --run p1 --states 20000 [--student runs/p1/student.npy --dagger]
-Out: data/<run>/shard_<time>_<worker>.npz (X, Q, SE, INC, CHOSE, K, TURN, OPP, SPLIT, KH)
+    python collect.py --run s1 --states 5000 --act 1 --kval 32 --obs 0 --exclude ../exclusions.json   # buys + actions
+Out: data/<run>/shard_<time>_<worker>.npz (X, Q, SE, INC, CHOSE, K, TURN, OPP, SPLIT, KH, ... and with the new build
+LEGAL, KIND, VG, VSE, VK). Every shard's META carries a cohort id (engine, sampler, policy and grading settings):
+labels are only pooled within one cohort. Games the engine reports as errored, or whose label buffer overflowed,
+give no labels (counted in the worker stats).
 """
 from __future__ import annotations
 
@@ -30,14 +34,45 @@ def split_of(kingdom):
     return h, (0 if h % 10 == 0 else 1 if h % 10 == 1 else 2)
 
 
-def meta(a):
-    """Settings and model hashes stored with every shard (labels are only comparable under the same ones)."""
+def source_hashes():
+    """sha256 (16 hex) of the C sources the labels depend on, and the engine submodule's commit."""
+    import subprocess
     from bv import core
-    return {"k0": a["k0"], "k1": a["k1"], "se": a["se"], "topn": a["topn"], "margin": a["margin"],
-            "dagger": a["dagger"], "student": a["student"] and core.hashlib.sha256(open(a["student"], "rb").read()).hexdigest()[:16],
-            "models": {m: core.sha(m) for m in ("rl3_c2_2654.npy", "rl3_c1_2300.npy", "rl1_r2_2200.npy")},
-            "opps": OPPS, "slices": list(SLICES), "round": a.get("round", 0), "run": a["run"],
-            "sampler": "known-top"}
+    files = {"bv.c": os.path.join(ROOT, "c", "bv.c"), "fastnet.h": os.path.join(ROOT, "c", "fastnet.h"),
+             "rl.c": os.path.join(core.RL3, "c", "rl.c"), "az.c": os.path.join(core.AZ, "c", "az.c"),
+             "engine.c": os.path.join(core.ENGINE_C, "engine.c"), "engine.h": os.path.join(core.ENGINE_C, "engine.h")}
+    out = {k: hashlib.sha256(open(f, "rb").read()).hexdigest()[:16] for k, f in files.items()}
+    out["engine_commit"] = subprocess.run(["git", "-C", os.path.join(ROOT, "engine"), "rev-parse", "HEAD"],
+                                          capture_output=True, text=True).stdout.strip()
+    return out
+
+
+def meta(a):
+    """Settings and model hashes stored with every shard (labels are only comparable under the same ones). cohort: a
+    hash of everything a label depends on (engine and sources, sampler, policies, grading); round and worker excluded."""
+    from bv import core
+    m = {"k0": a["k0"], "k1": a["k1"], "se": a["se"], "topn": a["topn"], "margin": a["margin"],
+         "dagger": a["dagger"], "student": a["student"] and core.hashlib.sha256(open(a["student"], "rb").read()).hexdigest()[:16],
+         "models": {m: core.sha(m) for m in ("rl3_c2_2654.npy", "rl3_c1_2300.npy", "rl1_r2_2200.npy")},
+         "opps": OPPS, "slices": list(SLICES), "round": a.get("round", 0), "run": a["run"],
+         "sampler": "known-top+public-tops" if a.get("obs") else "known-top", "obs": a.get("obs", 0),
+         "act": a.get("act", 0), "kval": a.get("kval", 0), "mix": a.get("mix", ""), "sources": source_hashes()}
+    key = {k: v for k, v in m.items() if k not in ("round", "run")}
+    m["cohort"] = hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()[:12]
+    return m
+
+
+def mix_seats(spec, kingdom):
+    """--mix "c2,c1,rl1,ga2": the rollout opponents (draw k continues the opponent with entry k % n)."""
+    from bv import core
+    return [core.seat_for(x, kingdom) for x in filter(None, spec.split(","))]
+
+
+def load_exclusions(path):
+    """Kingdoms never labelled: a shared exclusion manifest ({"kingdoms": ["Card,Card,..."]}), sorted names."""
+    if not path:
+        return set()
+    return {",".join(sorted(k.split(","))) for k in json.load(open(path))["kingdoms"]}
 
 
 def save_shard(out, name, cat, info):
@@ -59,8 +94,10 @@ def worker(a, wid, quota, q):
             tmp = f"{f}.{wid}.tmp.npy"
             np.save(tmp, np.load(a["student"]))
             os.replace(tmp, f)
-    core.configure(a["k0"], a["k1"], a["se"], a["topn"], a["margin"], st)
-    banned = eval_kingdoms()
+    core.configure(a["k0"], a["k1"], a["se"], a["topn"], a["margin"], st, act=a.get("act", 0), obs=a.get("obs", 0),
+                   kval=a.get("kval", 0))
+    banned = eval_kingdoms() | load_exclusions(a.get("exclude", ""))
+    skipped = {"error": 0, "overflow": 0}
     rng = random.Random(f"bv collect {a['run']} round {a.get('round', 0)} worker {wid}")   # deterministic: replayable
     out = os.path.join(ROOT, "data", a["run"])
     os.makedirs(out, exist_ok=True)
@@ -77,11 +114,17 @@ def worker(a, wid, quota, q):
         me = core.seat_for("c2", k, 4 if a["dagger"] else 2)
         op = core.seat_for(opp, k)
         seed = rng.getrandbits(32)
+        core.set_mix(mix_seats(a.get("mix", ""), k))
         r = core.play([me, op] if s == 0 else [op, me], k, seed, seed ^ 0x5EED)
         rec = r["rec"]
         m = len(rec["K"])
+        if r["error"] or r.get("overflow"):                  # an errored source game: none of its labels
+            skipped["error" if r["error"] else "overflow"] += 1
+            m = 0
         if m:
-            buf.append({**{x: rec[x] for x in ("X", "Q", "SE", "INC", "CHOSE", "K", "TURN", "CAND", "POL", "DIDX", "CAPS")},
+            fields = ("X", "Q", "SE", "INC", "CHOSE", "K", "TURN", "CAND", "POL", "DIDX", "CAPS", "LEGAL", "KIND", "VG",
+                      "VSE", "VK", "KN")
+            buf.append({**{x: rec[x] for x in fields if x in rec},
                         "SEED": np.full(m, seed, np.int64), "SEAT0": np.full(m, s, np.int8),
                         "KING": np.full(m, ",".join(k)),
                         "OPP": np.full(m, OPPS.index(opp), np.int8), "SPLIT": np.full(m, sp, np.int8),
@@ -96,6 +139,7 @@ def worker(a, wid, quota, q):
             buf = []
     st_ = core.stats()
     st_["rejected"] = int(core.lib.bv_rejected())
+    st_.update({f"skipped_{k}": v for k, v in skipped.items()})
     q.put(("done", wid, st_))
 
 
@@ -151,4 +195,9 @@ if __name__ == "__main__":
     ap.add_argument("--margin", type=float, default=0.0)
     ap.add_argument("--student", default="")
     ap.add_argument("--dagger", action="store_true")
+    ap.add_argument("--act", type=int, default=0, help="1: label buys and action decisions, 2: actions only")
+    ap.add_argument("--obs", type=int, default=0, help="the sampler's view of the opponent: 0 simulator, 1 public")
+    ap.add_argument("--kval", type=int, default=0, help="independent validation draws for each graded winner")
+    ap.add_argument("--mix", default="", help="rollout opponents, e.g. c2,c1,rl1,ga2 (default: the actual one)")
+    ap.add_argument("--exclude", default="", help="shared kingdom exclusion manifest (JSON)")
     print(collect(vars(ap.parse_args())))

@@ -50,19 +50,32 @@ _U8 = ctypes.POINTER(ctypes.c_ubyte)
 lib.bv_pol_of.argtypes = [_F, ctypes.c_int, ctypes.c_int, _F, _U8, _F]
 lib.bv_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
 lib.bv_play.restype = ctypes.c_int
+_NEW = hasattr(lib, "bv_set_obs")             # the frozen suite build (bv_suite.so) predates the new label fields
 lib.bv_play.argtypes = [_I, _F, _F, _I, _I, _I, _I, _I, _I, ctypes.c_int, ctypes.c_uint64, ctypes.c_uint64,
-                        _F, _F, _F, _I, _I, _I, _I, _I, ctypes.POINTER(ctypes.c_ubyte), _F, _I,
-                        ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int, _I]
+                        _F, _F, _F, _I, _I, _I, _I, _I, _U8, _F, _I, _U8] + \
+                       ([_U8, _I, _F, _F, _I, _I] if _NEW else []) + [ctypes.c_int, _I]
+if _NEW:
+    lib.bv_set_obs.argtypes = [ctypes.c_int]
+    lib.bv_set_kval.argtypes = [ctypes.c_int]
+    lib.bv_set_prep.argtypes = [ctypes.c_int]
+    lib.bv_preps.restype = ctypes.c_long
+    lib.bv_set_regrade_kind.argtypes = [ctypes.c_int]
+    lib.bv_pub_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
+    lib.bv_set_mix.argtypes = [ctypes.c_int, _I, ctypes.POINTER(_F), _I, _I, ctypes.POINTER(_I)]
 lib.bv_set_regrade.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_int]
 lib.bv_rejected.restype = ctypes.c_long
 lib.bv_lat.argtypes = [_F, ctypes.c_int]
 lib.bv_act_log.argtypes = [_F, ctypes.c_int]
 if hasattr(lib, "bv_known_stats"):              # absent in the frozen suite build
     lib.bv_known_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
+if _NEW:
+    lib.bv_set_fault.argtypes = [ctypes.c_int]
+    lib.bv_obs_test.argtypes = [_F, ctypes.c_int, ctypes.c_int, _I, ctypes.c_int, ctypes.c_uint64, ctypes.c_int, ctypes.c_int, _F]
 lib.bv_canon_test.argtypes = [_F, ctypes.c_int, ctypes.c_int, _I, ctypes.c_int, ctypes.c_uint64, ctypes.c_int, ctypes.c_int, _F]
 lib.rl_num_params.argtypes = [ctypes.c_int, ctypes.c_int]
 GA, NET = 0, 2
-MAX_REC = 200
+MAX_REC = 800                                  # labels per game (buys and, with the action teacher, action decisions)
+BUY, ACTION = 1, 0                             # decision kinds (engine DE_BUY, DE_PLAY_ACTION)
 MODELS = os.path.join(ROOT, "models")
 _P: dict = {}
 
@@ -108,12 +121,39 @@ lib.bv_set_act.argtypes = [ctypes.c_int]
 lib.bv_act_stats.argtypes = [ctypes.POINTER(ctypes.c_long)]
 
 
-def configure(k0=16, k1=64, se_mult=1.5, topn=5, margin=0.0, student=None, z=0.0):
-    configure.last = dict(k0=k0, k1=k1, se_mult=se_mult, topn=topn, margin=margin, student=student, z=z)
+def configure(k0=16, k1=64, se_mult=1.5, topn=5, margin=0.0, student=None, z=0.0, act=None, obs=0, kval=0,
+              prep=1):
+    """Teacher settings. act: None = leave as is, 0 buys, 1 buys + actions, 2 actions only. obs: the sampler's view of
+    the opponent (0 simulator, 1 public). kval: independent validation draws for the graded winner (0 = off; in play
+    mode the override must also pass on them). prep: 1 = each hidden-state draw prepared once (0 = per candidate)."""
+    configure.last = dict(k0=k0, k1=k1, se_mult=se_mult, topn=topn, margin=margin, student=student, z=z, act=act,
+                          obs=obs, kval=kval, prep=prep)
     lib.bv_set_cfg(k0, k1, se_mult, topn, margin)
     lib.bv_set_z(z)
     configure.student = student                    # keep a reference alive
     lib.bv_set_student(_f(student))
+    if act is not None:
+        lib.bv_set_act(act)
+    if _NEW:
+        lib.bv_set_obs(obs)
+        lib.bv_set_kval(kval)
+        lib.bv_set_prep(prep)
+    elif obs or kval or not prep:
+        raise RuntimeError("this build has no obs / kval / prep settings")
+
+
+def set_mix(seats):
+    """Rollouts continue the opponent with seats[k % n] at draw k (a fixed mixture, independent of the actual
+    opponent); [] = the actual opponent. seats: Seat objects (NET or GA) for the game's kingdom."""
+    set_mix.keep = seats
+    n = len(seats)
+    if not n:
+        lib.bv_set_mix(0, None, None, None, None, None)
+        return
+    shapes = [net_shape(s.prm) if s.mode == NET else (256, NF) for s in seats]
+    PF = (_F * n)(*[_f(s.prm) if s.prm is not None else None for s in seats])
+    PG = (_I * n)(*[s.genome if s.genome is not None else None for s in seats])
+    lib.bv_set_mix(n, _ints([s.mode for s in seats]), PF, _ints([a for a, _ in shapes]), _ints([b for _, b in shapes]), PG)
 
 
 def stats():
@@ -132,6 +172,11 @@ def play(seats, kingdom, seed, rng_seed=1):
     CAPS = np.zeros((MAX_REC, NA), np.uint8)
     POL = np.zeros((MAX_REC, NA), np.float32)
     DIDX = np.zeros(MAX_REC, np.int32)
+    LEGAL = np.zeros((MAX_REC, NA), np.uint8)
+    KIND = np.full(MAX_REC, BUY, np.int32)
+    VG, VSE = np.zeros(MAX_REC, np.float32), np.zeros(MAX_REC, np.float32)
+    VK = np.zeros(MAX_REC, np.int32)
+    KN = np.zeros(MAX_REC, np.int32)
     shapes = [net_shape(s.prm) if s.mode == NET else (256, NF) for s in seats]
     out = (ctypes.c_int * 6)()
     pi = lambda a: a.ctypes.data_as(_I)  # noqa: E731
@@ -139,14 +184,15 @@ def play(seats, kingdom, seed, rng_seed=1):
                     _ints([a for a, _ in shapes]), _ints([b for _, b in shapes]), seats[0].genome, seats[1].genome,
                     _ints([s.bv for s in seats]), k, len(kingdom), seed & (2**64 - 1), rng_seed & (2**64 - 1),
                     _f(X), _f(Q), _f(SE), pi(INC), pi(CH), pi(K), pi(SEAT), pi(TURN),
-                    CAND.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), _f(POL), pi(DIDX),
-                    CAPS.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), MAX_REC, out)
+                    CAND.ctypes.data_as(_U8), _f(POL), pi(DIDX), CAPS.ctypes.data_as(_U8),
+                    *([LEGAL.ctypes.data_as(_U8), pi(KIND), _f(VG), _f(VSE), pi(VK), pi(KN)] if _NEW else []), MAX_REC, out)
     m = out[0]
+    rec = {"X": X[:n], "Q": Q[:n], "SE": SE[:n], "INC": INC[:n], "CHOSE": CH[:n], "K": K[:n], "SEAT": SEAT[:n],
+           "TURN": TURN[:n], "CAND": CAND[:n], "POL": POL[:n], "DIDX": DIDX[:n], "CAPS": CAPS[:n]}
+    if _NEW:
+        rec.update(LEGAL=LEGAL[:n], KIND=KIND[:n], VG=VG[:n], VSE=VSE[:n], VK=VK[:n], KN=KN[:n])
     return {"winners": [i for i in range(2) if m >> i & 1], "scores": [out[1], out[2]], "turns": [out[3], out[4]],
-            "capped": bool(out[5] & 1), "error": bool(out[5] & 2),
-            "rec": {"X": X[:n], "Q": Q[:n], "SE": SE[:n], "INC": INC[:n], "CHOSE": CH[:n], "K": K[:n],
-                    "SEAT": SEAT[:n], "TURN": TURN[:n],
-                    "CAND": CAND[:n], "POL": POL[:n], "DIDX": DIDX[:n], "CAPS": CAPS[:n]}}
+            "capped": bool(out[5] & 1), "error": bool(out[5] & 2), "overflow": bool(out[5] & 4), "rec": rec}
 
 
 def points(r, seat):
@@ -198,6 +244,8 @@ def replay_game(key):
     st = np.load(key["student"]).astype(np.float32) if key.get("student") else None
     c = dict(getattr(configure, "last", {}))
     c.update(topn=key.get("topn", 5), margin=key.get("margin", 0.02), student=st)
+    if "act" in key:                               # action labels: the action teacher must count decisions the same
+        c["act"] = key["act"]
     configure(**c)
     me = seat_for("c2", k, 4 if st is not None else 2)
     op = seat_for(key["opp"], k)
@@ -218,20 +266,26 @@ def key_of(D, i, meta=None, opps=("c2", "c1", "rl1", "ga2")):
         key.update(topn=meta["topn"], margin=meta["margin"])
         if meta.get("dagger"):
             key["student"] = student_file(meta.get("run", "p1"), meta["student"])
+        if meta.get("act"):
+            key["act"] = meta["act"]
     return key
 
 
-def regrade(key, didx, k, seed, all_legal=True):
-    """Replay a recorded game and grade only its decision number didx with k draws from seed (all legal buys if
-    all_legal). Returns that record (dict of arrays, one row) or None."""
+def regrade(key, didx, k, seed, all_legal=True, kind=BUY):
+    """Replay a recorded game and grade only its decision number didx (counted within its kind) with k draws from
+    seed (all legal buys if all_legal). Returns that record (dict of arrays, one row) or None."""
     seats, kg = replay_game(key)
     lib.bv_set_regrade(int(didx), int(k), int(seed) & (2**64 - 1), int(all_legal))
+    if _NEW:
+        lib.bv_set_regrade_kind(int(kind))
     try:
         r = play(seats, kg, key["seed"], key["seed"] ^ 0x5EED)
     finally:
         lib.bv_set_regrade(-1, 0, 0, 0)
+        if _NEW:
+            lib.bv_set_regrade_kind(BUY)
     rec = r["rec"]
-    i = np.where(rec["DIDX"] == didx)[0]
+    i = np.where((rec["DIDX"] == didx) & (rec.get("KIND", np.full(len(rec["DIDX"]), BUY)) == kind))[0]
     return {x: v[i[0]] for x, v in rec.items()} if len(i) else None
 
 
@@ -244,6 +298,26 @@ def canon_test(seed, turn=5, k=8, kingdom=None):
     nh, nf = net_shape(p)
     out = np.zeros(4, np.float32)
     ok = lib.bv_canon_test(_f(p), nh, nf, _ints([ID[c] for c in kg]), len(kg), seed, turn, k, _f(out))
+    return tuple(float(v) for v in out) if ok else None
+
+
+def pub_stats():
+    """(graded decisions, of which the opponent had public top cards) since the library loaded."""
+    o = (ctypes.c_long * 2)()
+    lib.bv_pub_stats(o)
+    return int(o[0]), int(o[1])
+
+
+def obs_test(seed, turn=6, k=8, kingdom=None):
+    """bv_obs_test: max |q diff| for (public sampler: discard <-> hidden deck swap, simulator sampler: the same swap,
+    public sampler: two hidden cards below a public top swapped, public sampler: the public top card changed), or
+    None (-1 entries: no such swap in that state)."""
+    import random as _r
+    kg = kingdom or random_kingdom(_r.Random(seed))
+    p = params("rl3_c2_2654.npy")
+    nh, nf = net_shape(p)
+    out = np.zeros(4, np.float32)
+    ok = lib.bv_obs_test(_f(p), nh, nf, _ints([ID[c] for c in kg]), len(kg), seed, turn, k, _f(out))
     return tuple(float(v) for v in out) if ok else None
 
 

@@ -65,13 +65,40 @@ class Run:
             w.writerow(r)
 
 
-def load(run):
+def cohorts(run):
+    """{cohort id: number of shards} of a run's label shards (shards before cohort ids: "legacy")."""
+    out = {}
+    for f in sorted(glob.glob(os.path.join(ROOT, "data", run, "*.npz"))):
+        with np.load(f) as z:
+            c = json.loads(str(z["META"])).get("cohort", "legacy")
+        out[c] = out.get(c, 0) + 1
+    return out
+
+
+def load(run, cohort=None, kind=None):
     """All shards in one preallocated array per field (no second copy). CAND (the explicit candidate mask) comes from
-    the shard when it has one, else from numpy's isnan(Q) (old shards; numpy keeps NaN checks). POL is recomputed by
-    policy_prior from the mask (tests/test_prior.py: identical to the live prior)."""
+    the shard when it has one, else from numpy's isnan(Q) (old shards; numpy keeps NaN checks). POL: the live prior
+    recorded with the label when the shard has it (HAS_POL), else recomputed by policy_prior from the mask
+    (tests/test_prior.py: identical to the live prior). cohort: only shards of that label cohort ("legacy" = shards
+    without an id); None = all (labels of different cohorts are not comparable: compare them separately). kind: only
+    rows of that decision kind (bv.core.BUY / ACTION; shards without KIND are buys)."""
     fs = sorted(glob.glob(os.path.join(ROOT, "data", run, "*.npz")))
+    if cohort is not None:
+        fs = [f for f in fs if json.loads(str(np.load(f)["META"])).get("cohort", "legacy") == cohort]
     if not fs:
         return None
+    if kind is not None:                             # rows of one kind: filter shard by shard, then concatenate
+        parts = []
+        for f in fs:
+            with np.load(f) as z:
+                m = (z["KIND"] if "KIND" in z.files else np.full(len(z["K"]), 1)) == kind
+                parts.append({k: z[k][m] for k in z.files if k != "META" and z[k].ndim and len(z[k]) == len(m)})
+        keys = set.intersection(*(set(p) for p in parts))
+        out = {k: np.concatenate([p[k] for p in parts]) for k in keys}
+        if "CAND" not in out:
+            out["CAND"] = ~np.isnan(out["Q"])
+        out["HAS_POL"] = np.ones(len(out["K"]), bool)
+        return out
     sizes = []
     for f in fs:
         with np.load(f) as z:
@@ -80,12 +107,17 @@ def load(run):
     with np.load(fs[0]) as z:
         out = {k: np.empty((sum(sizes),) + z[k].shape[1:], z[k].dtype) for k in keys}
         out["CAND"] = np.empty((sum(sizes), z["Q"].shape[1]), np.uint8)
+        out["POL"] = np.zeros((sum(sizes), z["Q"].shape[1]), np.float32)
+        out["HAS_POL"] = np.zeros(sum(sizes), bool)
     o = 0
     for f, n in zip(fs, sizes):
         with np.load(f) as z:
             for k in keys:
                 out[k][o:o + n] = z[k]
             out["CAND"][o:o + n] = z["CAND"] if "CAND" in z.files else ~np.isnan(z["Q"])
+            if "POL" in z.files:
+                out["POL"][o:o + n] = z["POL"]
+                out["HAS_POL"][o:o + n] = True
         o += n
     return out
 
@@ -106,7 +138,10 @@ def fit(D, init=None, log=print):
     from bv.core import policy_prior
     X = torch.from_numpy(D["X"])                     # shares memory with the numpy array
     mask = D["CAND"].astype(bool) if "CAND" in D else ~np.isnan(D["Q"])     # explicit mask; numpy isnan for old shards
-    POL = torch.from_numpy(policy_prior(D["X"], mask))
+    pol = policy_prior(D["X"], mask)
+    if "HAS_POL" in D and D["HAS_POL"].any():        # the recorded live prior where the shard has it
+        pol[D["HAS_POL"]] = D["POL"][D["HAS_POL"]]
+    POL = torch.from_numpy(pol)
     Q = torch.from_numpy(np.nan_to_num(D["Q"], nan=0.0))
     M = torch.from_numpy(mask)
     SE = torch.from_numpy(np.nan_to_num(D["SE"], nan=1.0))
@@ -155,14 +190,15 @@ def fit(D, init=None, log=print):
     agree = float(np.mean(pick == np.nanargmax(q, 1)))
     ev = {"dev_loss": round(float(l_), 4), "dev_regret": round(reg, 4), "dev_regret_incumbent": round(reg_inc, 4),
           "dev_top1": round(agree, 3), "train_states": int(len(tr)), "dev_states": int(len(dv))}
-    ev.update(bank_eval(m))
+    ev.update(bank_eval(m, margin=CFG["margins"][0]))
     return m, export(m), ev
 
 
-def bank_eval(m, model_fn=None):
+def bank_eval(m, model_fn=None, margin=0.02, name="bank"):
     """Regret on the frozen validation bank (independent 128-draw grades over all legal buys): the student ranks its own
-    shortlist (the bank row's 16-draw candidates), as in play. Empty if there is no bank yet."""
-    p = os.path.join(ROOT, "data", "bank", "bank.npz")
+    shortlist (the bank row's 16-draw candidates) and overrides the incumbent only above the deployment margin, as in
+    play (sigmoid values, bv_student). Empty if there is no bank yet."""
+    p = os.path.join(ROOT, "data", "bank", f"{name}.npz")
     if not os.path.exists(p):
         return {}
     import torch
@@ -176,8 +212,10 @@ def bank_eval(m, model_fn=None):
     q = B["Q"]
     n = len(q)
     best = np.nanmax(q, 1)
-    pick = z.argmax(1)
     inc = B["INC"]
+    sq = 1 / (1 + np.exp(-z))
+    pick = sq.argmax(1)
+    pick = np.where(sq[np.arange(n), pick] - sq[np.arange(n), inc] > margin, pick, inc)
     gain = q[np.arange(n), pick] - q[np.arange(n), inc]
     ov = pick != inc
     return {"bank_regret": round(float(np.mean(best - q[np.arange(n), pick])), 4),
