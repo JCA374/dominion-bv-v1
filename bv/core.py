@@ -27,6 +27,8 @@ DEPS = SRC + [os.path.join(ROOT, "c", "fastnet.h"), os.path.join(RL3, "c", "rl.c
 
 
 def build() -> str:
+    if os.environ.get("BV_SO") and os.path.exists(SO):
+        return SO                                    # a frozen build (match arms that must share one library)
     if not os.path.exists(SO) or max(os.path.getmtime(d) for d in DEPS) > os.path.getmtime(SO):
         tmp = f"{SO}.{os.getpid()}"
         subprocess.check_call(["gcc", "-O3", "-march=native", "-ffast-math", "-fno-finite-math-only", "-shared", "-fPIC", "-Wall", "-Wextra",
@@ -81,6 +83,7 @@ _P: dict = {}
 
 
 def params(name):
+    """A net's weights by file name in models/ or by absolute path."""
     if name not in _P:
         _P[name] = np.ascontiguousarray(np.load(os.path.join(MODELS, name)).astype(np.float32))
     return _P[name]
@@ -200,8 +203,18 @@ def points(r, seat):
     return 0.5 if len(w) == 2 else (1.0 if seat in w else 0.0)
 
 
+def net_file(spec):
+    """The weights file of a net spec: 'c2' / 'c1' / 'rl1' (models/) or 'net:<path to .npy>' (any rl-v3 net)."""
+    if spec.startswith("net:"):
+        return os.path.abspath(spec[4:])
+    return os.path.join(MODELS, {"c2": "rl3_c2_2654.npy", "c1": "rl3_c1_2300.npy", "rl1": "rl1_r2_2200.npy"}[spec])
+
+
 def seat_for(spec, kingdom, bv=0):
-    """spec: 'c2' / 'c1' / 'rl1' (nets) or 'ga' (az-v1's per-kingdom base genome) or 'ga2' (portfolio-v3 base)."""
+    """spec: 'c2' / 'c1' / 'rl1' (nets), 'net:<path.npy>' (any rl-v3 net), 'ga' (az-v1's per-kingdom base genome) or
+    'ga2' (portfolio-v3 base)."""
+    if spec.startswith("net:"):
+        return Seat(NET, None, params(net_file(spec)), bv)
     if spec == "ga":
         return Seat(GA, base_genome(kingdom)["ints"])
     if spec == "ga2":

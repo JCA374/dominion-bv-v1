@@ -153,6 +153,8 @@ def main():
     from collect import source_hashes
     manifest = {k: v for k, v in a.items() if k not in ("workers", "resume")}
     manifest["models"] = {m: _c.sha(m) for m in ("rl3_c2_2654.npy", "rl3_c1_2300.npy", "rl1_r2_2200.npy")}
+    manifest["seat_sha"] = {x: hashlib.sha256(open(_c.net_file(a[x]), "rb").read()).hexdigest()[:16]
+                            for x in ("base", "opp") if a[x] not in ("ga", "ga2")}
     manifest["student_sha"] = (hashlib.sha256(open(a["student"], "rb").read()).hexdigest()[:16]
                                if a["student"] else None)
     manifest["sources"] = source_hashes()
