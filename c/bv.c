@@ -429,6 +429,7 @@ static void bv_pol(const float *lg, const int *cand, int nc, float *pol) {
  * two candidates is within se_mult of its own standard error; a tie with zero observed SE is unresolved (another
  * batch may separate them), not a stop. */
 #define BV_KMAX 256
+static double g_deadline;           /* bv_advise: stop adding draws after this time (bv_now; 0 = no cap) */
 static int bv_grade(const de_game *g, int me, const int *ok, const float *lg, int inc, uint64_t *rng,
                     float *q, float *se, unsigned char *mask, unsigned char *caps) {
     int cand[RL_NA], nc = bv_cands(ok, lg, inc, cand);
@@ -442,6 +443,7 @@ static int bv_grade(const de_game *g, int me, const int *ok, const float *lg, in
     while (K < k1) {
         int step = K == 0 ? g_cfg.k0 : 16;
         for (int k = 0; k < step && K < k1; k++, K++) {
+            if (g_deadline > 0 && bv_now() > g_deadline) break;
             uint64_t seed = de_rng_next(rng) | 1;
             err |= draw_all(g, me, cand, nc, seed, K, V[K], caps);
             for (int i = 0; i < nc; i++) s[cand[i]] += V[K][cand[i]];
@@ -451,7 +453,7 @@ static int bv_grade(const de_game *g, int me, const int *ok, const float *lg, in
             int a = cand[i];
             if (b1 < 0 || s[a] > s[b1]) { b2 = b1; b1 = a; } else if (b2 < 0 || s[a] > s[b2]) b2 = a;
         }
-        if (b2 < 0 || K >= k1) break;
+        if (b2 < 0 || K >= k1 || (g_deadline > 0 && bv_now() > g_deadline)) break;
         double m = 0, m2 = 0;
         for (int k = 0; k < K; k++) { double x = V[k][b1] - V[k][b2]; m += x; m2 += x * x; }
         m /= K;
@@ -460,6 +462,7 @@ static int bv_grade(const de_game *g, int me, const int *ok, const float *lg, in
     }
     g_in_plan--;
     for (int a = 0; a < RL_NA; a++) { q[a] = NAN; se[a] = NAN; }
+    if (!K) return 0;
     for (int i = 0; i < nc; i++) {
         int a = cand[i];
         double m = 0, m2 = 0;
@@ -846,3 +849,79 @@ int bv_obs_test(const float *prm, int nh, int nf, const int *kingdom, int kn, ui
     g_cfg = keep;
     return 1;
 }
+
+/* The advisor: grade one position read from a live game (the Steam advisor), with a time cap. The caller describes the
+ * position: supply[DE_NUM_CARDS] (-1 = not in this game), me (0/1, the player to move), zones = the cards of
+ * [my deck, my hand, my discard, my play, their deck, their hand, their discard, their play] one after another with
+ * their sizes in zn[8], turns[2] (turns completed), kind (DE_BUY or DE_PLAY_ACTION), coins, buys, actions, merchants.
+ * The order of my deck is unknown (shuffled per draw); the opponent's cards are pooled and dealt again at their zone
+ * sizes (obs 1: only what a player can know). Rollouts continue both players with the net prm. inc: the advisor's own
+ * pick (-1 = the net's arg-max), always a candidate. Draws: g_cfg (bv_set_cfg), stopped at `secs` seconds.
+ * q, se: per option (NAN if not a candidate), mask: the candidates. out: [incumbent, net's arg-max, draws,
+ * milliseconds, net's value]. Returns draws used (0: no time for one draw), -1 on an engine error in a rollout,
+ * -2 if the position has fewer than two options. */
+int bv_advise(const float *prm, int nh, int nf, const int *supply, int me, const int *zones, const int *zn,
+              const int *turns, int kind, int coins, int buys, int actions, int merchants, int inc, float secs,
+              uint64_t seed, float *q, float *se, unsigned char *mask, float *out) {
+    double t0 = bv_now();
+    static de_game g;
+    memset(&g, 0, sizeof g);
+    g.nplayers = 2;
+    memcpy(g.supply, supply, sizeof g.supply);
+    const int *z = zones;
+    for (int i = 0; i < 2; i++) {
+        de_player *p = &g.p[i == 0 ? me : 1 - me];
+        int *dst[4] = {p->deck, p->hand, p->discard, p->play}, *len[4] = {&p->deck_n, &p->hand_n, &p->discard_n, &p->play_n};
+        for (int k = 0; k < 4; k++) {
+            int n = zn[4 * i + k];
+            if (n < 0 || n > DE_ZONE) return -2;
+            memcpy(dst[k], z, (size_t)n * sizeof(int));
+            *len[k] = n;
+            z += n;
+        }
+        p->turns = turns[i == 0 ? me : 1 - me];
+        p->rng = 1;
+    }
+    g.current = me;
+    g.coins = coins; g.buys = buys; g.actions = actions; g.merchants = merchants;
+    g.trace = 0xcbf29ce484222325ULL;
+    int ok[RL_NA] = {0}, nl = 0;
+    if (kind == DE_BUY) {
+        if (buys > 0)
+            for (int c = 0; c < DE_NUM_CARDS; c++) if (g.supply[c] > 0 && DE_CARDS[c].cost <= coins) ok[c] = 1;
+    } else if (kind == DE_PLAY_ACTION) {
+        if (actions > 0)
+            for (int k = 0; k < g.p[me].hand_n; k++) if (DE_CARDS[g.p[me].hand[k]].types & DE_ACTION) ok[g.p[me].hand[k]] = 1;
+    } else return -2;
+    ok[RL_PASS] = 1;
+    for (int a = 0; a < RL_NA; a++) nl += ok[a];
+    float x[RL_NF], lg[RL_NA];
+    rl_features(&g, me, kind, -1, x);
+    out[4] = rl_eval(prm, nh, nf, x, lg);
+    int best = -1;
+    for (int a = 0; a < RL_NA; a++) if (ok[a] && (best < 0 || lg[a] > lg[best])) best = a;
+    if (inc < 0 || inc >= RL_NA || !ok[inc]) inc = best;
+    out[0] = inc; out[1] = best; out[2] = 0;
+    for (int a = 0; a < RL_NA; a++) { q[a] = NAN; se[a] = NAN; }
+    memset(mask, 0, RL_NA);
+    if (nl < 2) { out[3] = (float)(1000 * (bv_now() - t0)); return -2; }
+    for (int i = 0; i < 2; i++) {
+        memset(&g_cont[i], 0, sizeof g_cont[i]);
+        g_cont[i].mode = RL_NET; g_cont[i].prm = prm; g_cont[i].nh = nh; g_cont[i].nf = nf; g_cont[i].temp = 1;
+    }
+    int keep_obs = g_obs, keep_kn = g_kn_on, keep_nmix = g_nmix;
+    g_obs = 1; g_kn_on = 0; g_known = 0; g_nmix = 0;
+    memset(g_pub, 0, sizeof g_pub);
+    g_roll_kind = kind;
+    g_deadline = t0 + secs;
+    unsigned char caps[RL_NA];
+    uint64_t rng = seed | 1;
+    int K = bv_grade(&g, me, ok, lg, inc, &rng, q, se, mask, caps);
+    g_deadline = 0;
+    g_roll_kind = DE_BUY;
+    g_obs = keep_obs; g_kn_on = keep_kn; g_nmix = keep_nmix;
+    out[2] = K > 0 ? K : 0;
+    out[3] = (float)(1000 * (bv_now() - t0));
+    return K;
+}
+

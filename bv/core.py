@@ -198,6 +198,30 @@ def play(seats, kingdom, seed, rng_seed=1):
             "capped": bool(out[5] & 1), "error": bool(out[5] & 2), "overflow": bool(out[5] & 4), "rec": rec}
 
 
+if hasattr(lib, "bv_advise"):
+    lib.bv_advise.restype = ctypes.c_int
+    lib.bv_advise.argtypes = [_F, ctypes.c_int, ctypes.c_int, _I, ctypes.c_int, _I, _I, _I, ctypes.c_int, ctypes.c_int,
+                              ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_float, ctypes.c_uint64,
+                              _F, _F, _U8, _F]
+
+
+def advise(prm, supply, me, zones, turns, kind, coins=0, buys=1, actions=1, merchants=0, inc=-1, secs=3.0, seed=1):
+    """Grade one position from outside a game (the Steam advisor; C bv_advise), stopped after `secs` seconds. Draws:
+    configure()'s k0/k1/se_mult/topn. zones: 8 card-id lists [my deck, hand, discard, play, their deck, hand, discard,
+    play]; supply: per card (-1 = not in the game); kind: BUY or ACTION; inc: the pick to compare against (-1 = the
+    net's). -> {"draws", "ms", "inc", "net", "value", "q", "se", "cand"}; draws 0: no time, -1: engine error, -2: one
+    option."""
+    nh, nf = net_shape(prm)
+    flat = [c for z in zones for c in z]
+    q, se = np.full(NA, np.nan, np.float32), np.full(NA, np.nan, np.float32)
+    cand, out = np.zeros(NA, np.uint8), np.zeros(5, np.float32)
+    K = lib.bv_advise(_f(prm), nh, nf, _ints(list(supply)), me, _ints(flat or [0]), _ints([len(z) for z in zones]),
+                      _ints(list(turns)), kind, coins, buys, actions, merchants, inc, secs, seed & (2**64 - 1),
+                      _f(q), _f(se), cand.ctypes.data_as(_U8), _f(out))
+    return {"draws": K, "ms": float(out[3]), "inc": int(out[0]), "net": int(out[1]), "value": float(out[4]),
+            "q": q, "se": se, "cand": cand.astype(bool)}
+
+
 def points(r, seat):
     w = r["winners"]
     return 0.5 if len(w) == 2 else (1.0 if seat in w else 0.0)
