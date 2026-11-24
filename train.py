@@ -104,6 +104,12 @@ def load(run, cohort=None, kind=None):
         with np.load(f) as z:
             sizes.append(len(z["K"]))
     keys = ["X", "Q", "SE", "INC", "CHOSE", "K", "TURN", "OPP", "SPLIT", "KH", "SLICE", "RESULT"]
+    with np.load(fs[0]) as z:                        # newer shards: also these, when every shard has them
+        extra = [k for k in ("LEGAL", "KIND", "VG", "VSE", "VK", "KN", "DIDX", "SEED", "SEAT0", "CAPS") if k in z.files]
+    for f in fs[1:]:
+        with np.load(f) as z:
+            extra = [k for k in extra if k in z.files]
+    keys += extra
     with np.load(fs[0]) as z:
         out = {k: np.empty((sum(sizes),) + z[k].shape[1:], z[k].dtype) for k in keys}
         out["CAND"] = np.empty((sum(sizes), z["Q"].shape[1]), np.uint8)
