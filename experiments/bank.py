@@ -100,12 +100,19 @@ def main():
     ap.add_argument("--workers", type=int, default=7)
     ap.add_argument("--name", default="bank")
     ap.add_argument("--allow-mismatch", action="store_true")
+    ap.add_argument("--decisive-share", type=float, default=0.0, help="share of positions whose label spread > 0.2")
     a = ap.parse_args()
     from bv import core
     kinds = [{"buy": core.BUY, "action": core.ACTION}[x] for x in a.kinds.split(",")]
     rows, shards = rows_of(a.run, a.cohort, a.split, kinds)
     rng = np.random.default_rng(7)
-    pick = rng.permutation(len(rows))[:a.n]
+    if a.decisive_share > 0:                      # a share of decisive positions (label spread > 0.2), rest ordinary
+        spread = np.array([np.nanmax(r[2]) - np.nanmin(r[2]) for r in rows])
+        dec, ordi = rng.permutation(np.where(spread > 0.2)[0]), rng.permutation(np.where(spread <= 0.2)[0])
+        nd = min(len(dec), int(round(a.n * a.decisive_share)))
+        pick = rng.permutation(np.concatenate([dec[:nd], ordi[:a.n - nd]]).astype(int))
+    else:
+        pick = rng.permutation(len(rows))[:a.n]
     items = [(rows[i][0], rows[i][1], 1_000_003 + int(i), a.k_hi if j < a.n_hi else a.k, rows[i][5], rows[i][6])
              for j, i in enumerate(pick)]
     print(f"bank {a.name}: {len(items)} of {len(rows)} positions (run {a.run}, cohort {a.cohort or 'any'}, split "
@@ -132,7 +139,9 @@ def main():
     B["SE16"] = np.stack([row[8] for _, row, _ in ok])
     B["OPP"] = np.array([row[9] for _, row, _ in ok], np.int8)
     B["SHARD"] = np.array([row[7] for _, row, _ in ok])
+    B["DECISIVE"] = np.array([np.nanmax(row[2]) - np.nanmin(row[2]) > 0.2 for _, row, _ in ok])
     B["HI"] = np.array([j < a.n_hi for _, _, j in ok])
+    B["KEY"] = np.array([json.dumps({"key": row[0], "didx": row[1], "kind": row[5]}) for _, row, _ in ok])
     if "KIND" not in B:
         B["KIND"] = np.array([row[5] for _, row, _ in ok], np.int32)
     os.makedirs(os.path.join(ROOT, "data", "bank"), exist_ok=True)
@@ -167,7 +176,7 @@ def score(B, margin, z):
     ph = phase_of(B["TURN"])
     opps = ("c2", "c1", "rl1", "ga2")
     return {"margin": margin, "z": z, "mean_legal": round(float(B["CAND"].sum(1).mean()), 2), "all": block(np.ones(n, bool)),
-            "high_draw": block(B["HI"]),
+            "high_draw": block(B["HI"]), "decisive": block(B["DECISIVE"]), "ordinary": block(~B["DECISIVE"]),
             "by_phase": {p: block(ph == p) for p in ("opening", "middle", "late")},
             "by_opponent": {o: block(B["OPP"] == i) for i, o in enumerate(opps)},
             "by_kind": {k: block(B["KIND"] == v) for k, v in (("buy", 1), ("action", 0))}}
